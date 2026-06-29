@@ -1,0 +1,6 @@
+- id: sparql-formatter
+  name: sparql formatter
+  description: "Run 'qlue-ls format'"
+  entry: qlue-ls format -w
+  language: rust
+  files: \.sparql$
