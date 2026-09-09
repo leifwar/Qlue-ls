@@ -7,7 +7,7 @@ use crate::server::{
         CodeAction, CodeActionKind, WorkspaceEdit,
         base_types::LSPAny,
         errors::{ErrorCode, LSPError},
-        textdocument::{Range, TextEdit},
+        textdocument::{Position, Range, TextEdit},
     },
     message_handler::{code_action::same_subject::contract_triples_from_diagnostic, diagnostic},
 };
@@ -100,6 +100,37 @@ pub(crate) fn remove_prefix_declaration(
     Ok(Some(code_action))
 }
 
+// NOTE: PREFIX declarations should be inserted:
+// - after any comments
+// - after the existing prefix declarations
+fn prefix_declaration_insert_line(server: &Server, document_uri: &str) -> Result<u32, LSPError> {
+    let tree = server.state.get_cached_parse_tree(document_uri)?.tree;
+    let document = server.state.get_document(document_uri)?;
+
+    Ok(if let Some(node) = tree.first_child() {
+        if let Some(prologue) = node.first_child()
+            && prologue.kind() == SyntaxKind::Prologue
+        {
+            Position::from_byte_index(prologue.text_range().end(), &document.text)
+                .unwrap()
+                .line
+                + 1
+        } else {
+            Position::from_byte_index(node.text_range().start(), &document.text)
+                .unwrap()
+                .line
+        }
+    } else {
+        tree.children_with_tokens()
+            .take_while(|child| {
+                child
+                    .as_token()
+                    .is_some_and(|token| token.kind().is_trivia())
+            })
+            .count() as u32
+    })
+}
+
 fn shorten_uri(
     server: &mut Server,
     document_uri: &String,
@@ -112,10 +143,11 @@ fn shorten_uri(
             let mut code_action = CodeAction::new("Shorten URI", Some(CodeActionKind::QuickFix));
             code_action.add_edit(document_uri, TextEdit::new(diagnostic.range, &curie));
             if !namespace_is_declared(&server.state, document_uri, &prefix)? {
+                let insert_line = prefix_declaration_insert_line(server, document_uri)?;
                 code_action.add_edit(
                     document_uri,
                     TextEdit::new(
-                        Range::new(0, 0, 0, 0),
+                        Range::new(insert_line, 0, insert_line, 0),
                         &format!("PREFIX {}: <{}>\n", prefix, namespace),
                     ),
                 );
@@ -143,6 +175,7 @@ pub(crate) fn declare_prefix(
             .get_default_converter()
             .map(|converter| converter.find_by_prefix(prefix))
         {
+            let insert_line = prefix_declaration_insert_line(server, document_uri)?;
             Ok(Some(CodeAction {
                 title: format!("Declare prefix \"{}\"", prefix),
                 kind: Some(CodeActionKind::QuickFix),
@@ -150,7 +183,7 @@ pub(crate) fn declare_prefix(
                     changes: Some(HashMap::from([(
                         document_uri.to_string(),
                         vec![TextEdit::new(
-                            Range::new(0, 0, 0, 0),
+                            Range::new(insert_line, 0, insert_line, 0),
                             &format!("PREFIX {}: <{}>\n", prefix, record.uri_prefix),
                         )],
                     )])),
@@ -256,6 +289,42 @@ mod test {
         assert_eq!(
             code_action.edit.changes.unwrap().get("uri").unwrap(),
             &vec![TextEdit::new(Range::new(2, 5, 2, 29), "schema:name"),]
+        );
+    }
+
+    #[test]
+    fn shorten_uri_undeclared_after_existing_prefix() {
+        let mut server = Server::new(|_message| {});
+        let state = setup_state(indoc!(
+            "PREFIX schema: <http://schema.org/>
+             SELECT * {
+               ?a ?b <http://example.org/name> .
+             }"
+        ));
+        server.state = state;
+        let diagnostic = Diagnostic {
+            range: Range::new(2, 8, 2, 34),
+            severity: diagnostic::DiagnosticSeverity::Information,
+            message: String::new(),
+            source: None,
+            code: None,
+            data: Some(LSPAny::LSPArray(vec![
+                LSPAny::String("ex".to_string()),
+                LSPAny::String("http://example.org/".to_string()),
+                LSPAny::String("ex:name".to_string()),
+            ])),
+        };
+
+        let code_action = shorten_uri(&mut server, &"uri".to_string(), diagnostic)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            code_action.edit.changes.unwrap().get("uri").unwrap(),
+            &vec![
+                TextEdit::new(Range::new(2, 8, 2, 34), "ex:name"),
+                TextEdit::new(Range::new(1, 0, 1, 0), "PREFIX ex: <http://example.org/>\n"),
+            ]
         );
     }
 }

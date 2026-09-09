@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - a template that fails to load or render now reports *why*: the error message
   contains Tera's source-annotated report pointing at the offending part of the
   template.
+- quickfixes insert predicate declarations after the first comments
 
 ## [3.8.0] - 2026-09-05
 
