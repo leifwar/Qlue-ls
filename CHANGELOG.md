@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+### Added
+
+- folding range for frontmamtter comment
+  A Frontmatter comment is the first comment in the file. It MUST start with `#+`
+  and documents metadatat about the query.
+  i.e.
+  #+ title: My query
+  #+ description: queries stuff
+
 ### Changed
 
 - the templating engine for completion and hover queries was updated to Tera
