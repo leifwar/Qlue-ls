@@ -37,56 +37,65 @@ pub(super) async fn handle_folding_range_request(
 /// the prologue (as an imports region) and every curly-brace delimited group graph pattern.
 fn compute_folding_ranges(tree: &SyntaxNode, text: &str) -> Vec<FoldingRange> {
     let mut result = vec![];
-    if let Some(prologue) = tree
-        .first_child()
-        .and_then(|child| child.first_child().and_then(Prologue::cast))
-    {
-        let range = Range::from_byte_offset_range(prologue.syntax().text_range(), text).unwrap();
-        result.push(FoldingRange {
-            start_line: range.start.line,
-            end_line: range.end.line,
-            start_character: None,
-            end_character: None,
-            kind: Some(FoldingRangeKind::Imports),
-            collapsed_text: Some(prologue.text()),
-        });
+
+    // NOTE: Fold PREFIX declarations
+    if let Some(prefix_declaration_fold) = fold_prefix_declaration(tree, text) {
+        result.push(prefix_declaration_fold);
     }
-    // Fold any block delimited by curly braces
-    result.extend(
-        tree.descendants()
-            .filter(|node| node.kind() == SyntaxKind::GroupGraphPattern)
-            .filter_map(|node| {
-                let open_brace = node
-                    .first_child_or_token()
-                    .filter(|token| token.kind() == SyntaxKind::LCurly)?
-                    .into_token()?;
-                let close_brace = node
-                    .last_child_or_token()
-                    .filter(|token| token.kind() == SyntaxKind::RCurly)?
-                    .into_token()?;
-                let open_position =
-                    Position::from_byte_index(open_brace.text_range().start(), text)?;
-                let close_position =
-                    Position::from_byte_index(close_brace.text_range().start(), text)?;
-                // NOTE: A folding range collapses `start_line..=end_line`, so end the fold on
-                // the line before the closing brace to keep the `}` visible. `checked_sub`
-                // also drops single-line blocks, which have nothing to fold.
-                let end_line = close_position.line.checked_sub(1)?;
-                // INFO: Skip degenerate ranges (e.g. empty two-line blocks) that would fold nothing.
-                if end_line <= open_position.line {
-                    return None;
-                }
-                Some(FoldingRange {
-                    start_line: open_position.line,
-                    end_line,
-                    start_character: None,
-                    end_character: None,
-                    kind: None,
-                    collapsed_text: None,
-                })
-            }),
-    );
+    // NOTE: Fold any block delimited by curly braces
+    result.extend(fold_curly_block(tree, text));
     result
+}
+
+fn fold_curly_block(tree: &SyntaxNode, text: &str) -> Vec<FoldingRange> {
+    tree.descendants()
+        .filter(|node| node.kind() == SyntaxKind::GroupGraphPattern)
+        .filter_map(|node| {
+            let open_brace = node
+                .first_child_or_token()
+                .filter(|token| token.kind() == SyntaxKind::LCurly)?
+                .into_token()?;
+            let close_brace = node
+                .last_child_or_token()
+                .filter(|token| token.kind() == SyntaxKind::RCurly)?
+                .into_token()?;
+            let open_position = Position::from_byte_index(open_brace.text_range().start(), text)?;
+            let close_position = Position::from_byte_index(close_brace.text_range().start(), text)?;
+            // NOTE: A folding range collapses `start_line..=end_line`, so end the fold on
+            // the line before the closing brace to keep the `}` visible. `checked_sub`
+            // also drops single-line blocks, which have nothing to fold.
+            let end_line = close_position.line.checked_sub(1)?;
+            // INFO: Skip degenerate ranges (e.g. empty two-line blocks) that would fold nothing.
+            if end_line <= open_position.line {
+                return None;
+            }
+            Some(FoldingRange {
+                start_line: open_position.line,
+                end_line,
+                start_character: None,
+                end_character: None,
+                kind: None,
+                collapsed_text: None,
+            })
+        })
+        .collect()
+}
+
+fn fold_prefix_declaration(tree: &SyntaxNode, text: &str) -> Option<FoldingRange> {
+    tree.first_child()
+        .and_then(|child| child.first_child().and_then(Prologue::cast))
+        .map(|prologue| {
+            let range =
+                Range::from_byte_offset_range(prologue.syntax().text_range(), text).unwrap();
+            FoldingRange {
+                start_line: range.start.line,
+                end_line: range.end.line,
+                start_character: None,
+                end_character: None,
+                kind: Some(FoldingRangeKind::Imports),
+                collapsed_text: Some(prologue.text()),
+            }
+        })
 }
 
 #[cfg(test)]
