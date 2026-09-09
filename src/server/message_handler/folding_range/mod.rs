@@ -42,9 +42,39 @@ fn compute_folding_ranges(tree: &SyntaxNode, text: &str) -> Vec<FoldingRange> {
     if let Some(prefix_declaration_fold) = fold_prefix_declaration(tree, text) {
         result.push(prefix_declaration_fold);
     }
+
+    // NOTE: Fold frontmatter comment
+    if let Some(frontmatter_fold) = fold_frontmatter_comment(tree, text) {
+        result.push(frontmatter_fold);
+    }
+
     // NOTE: Fold any block delimited by curly braces
     result.extend(fold_curly_block(tree, text));
     result
+}
+
+fn fold_frontmatter_comment(tree: &SyntaxNode, text: &str) -> Option<FoldingRange> {
+    let frontmatter: Vec<_> = tree
+        .children_with_tokens()
+        .take_while(|child| {
+            child.as_token().is_some_and(|token| {
+                (token.kind() == SyntaxKind::Comment && token.text().starts_with("#+"))
+                    || token.kind() == SyntaxKind::WHITESPACE
+            })
+        })
+        .collect();
+    let first = frontmatter.first()?;
+    let last = frontmatter.last()?;
+    let start_line = Position::from_byte_index(first.text_range().start(), text)?.line;
+    let end_line = Position::from_byte_index(last.text_range().start(), text)?.line;
+    Some(FoldingRange {
+        start_line,
+        end_line,
+        start_character: None,
+        end_character: None,
+        kind: None,
+        collapsed_text: None,
+    })
 }
 
 fn fold_curly_block(tree: &SyntaxNode, text: &str) -> Vec<FoldingRange> {
@@ -103,7 +133,9 @@ mod test {
     use ll_sparql_parser::parse;
 
     use super::compute_folding_ranges;
-    use crate::server::lsp::FoldingRangeKind;
+    use crate::server::{
+        lsp::FoldingRangeKind, message_handler::folding_range::fold_frontmatter_comment,
+    };
 
     /// Returns only the brace-delimited (GGP) folding ranges as `(start_line, end_line)` tuples.
     fn ggp_folds(text: &str) -> Vec<(u32, u32)> {
@@ -185,5 +217,21 @@ mod test {
     fn query_without_group_graph_pattern_has_no_ggp_folds() {
         let text = "PREFIX ex: <http://example.org/>";
         assert!(ggp_folds(text).is_empty());
+    }
+
+    #[test]
+    fn simple_frontamtter() {
+        let text = "#+ title: dings\n#+ description: foo\nSELECT * {\n  ?s ?p ?o .\n}";
+        let (tree, _) = parse(text);
+        let range = fold_frontmatter_comment(&tree, text);
+        assert!(range.is_some_and(|range| range.start_line == 0 && range.end_line == 1));
+    }
+
+    #[test]
+    fn frontamtter_separated_by_normal_comment() {
+        let text = "#+ title: dings\n#+ description: foo\n# comment\n#+ dings\nSELECT * {\n  ?s ?p ?o .\n}";
+        let (tree, _) = parse(text);
+        let range = fold_frontmatter_comment(&tree, text);
+        assert!(range.is_some_and(|range| range.start_line == 0 && range.end_line == 1));
     }
 }
