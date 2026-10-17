@@ -47,6 +47,7 @@ mod test {
     use crate::server::{
         lsp::diagnostic::DiagnosticSeverity, message_handler::diagnostic::test_utils::run,
     };
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn triggered_by_invalid_query() {

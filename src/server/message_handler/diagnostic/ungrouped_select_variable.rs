@@ -116,6 +116,7 @@ mod test {
         lsp::{diagnostic::DiagnosticSeverity, textdocument::Range},
         message_handler::diagnostic::test_utils::run,
     };
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn triggered_by_ungrouped_selected_variable() {

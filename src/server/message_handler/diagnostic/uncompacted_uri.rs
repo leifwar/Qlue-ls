@@ -66,6 +66,7 @@ mod test {
         message_handler::diagnostic::test_utils::{run, run_with_server},
     };
     use indoc::indoc;
+    use pretty_assertions::assert_eq;
     use std::collections::HashMap;
 
     fn setup_server() -> Server {

@@ -65,6 +65,7 @@ mod test {
         message_handler::diagnostic::test_utils::run,
     };
     use indoc::indoc;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn triggered_by_unused_prefix() {
