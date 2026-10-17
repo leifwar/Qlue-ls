@@ -6,6 +6,7 @@ pub mod groupby_star_selection;
 pub mod invalid_projection_variable;
 pub mod same_subject;
 pub mod syntax_error;
+pub mod unbound_bind_variable;
 pub mod uncompacted_uri;
 pub mod undeclared_prefix;
 pub mod ungrouped_select_variable;
@@ -13,12 +14,10 @@ pub mod unused_prefix_declaration;
 
 // TODO: Diagnostics for warnings reported by QLever. They are scaffolded only:
 // once implemented, drop the `allow` and register them in `handle_diagnostic_request`.
-#[allow(dead_code)]
-pub mod bounding_box_nearest_neighbors;
-#[allow(dead_code)]
-pub mod invalid_spatial_join_payload;
-#[allow(dead_code)]
-pub mod unbound_bind_variable;
+// #[allow(dead_code)]
+// pub mod bounding_box_nearest_neighbors;
+// #[allow(dead_code)]
+// pub mod invalid_spatial_join_payload;
 #[allow(dead_code)]
 pub mod unbound_group_by_expression_variable;
 #[allow(dead_code)]
@@ -40,7 +39,11 @@ use crate::server::{
 };
 use auto_fix_prefixes::{auto_fix_prefixes, client_support_workspace_edits};
 use futures::lock::Mutex;
-use ll_sparql_parser::ast::{AstNode, Unit};
+use ll_sparql_parser::{
+    SyntaxNode,
+    ast::{AstNode, GraphPatternNotTriples, TriplesBlock, Unit, Var},
+    syntax_kind::SyntaxKind,
+};
 use std::rc::Rc;
 
 #[tracing::instrument(skip_all, fields(id = %request.get_id(), uri = %request.params.text_document.uri))]
@@ -78,12 +81,29 @@ pub(super) async fn handle_diagnostic_request(
     add_diagnostic!(groupby_star_selection::diagnostics);
     add_diagnostic!(deprecated_nearest_neighbors::diagnostics);
     add_diagnostic!(disjoint_minus::diagnostics);
+    add_diagnostic!(unbound_bind_variable::diagnostics);
 
     if client_support_workspace_edits(&server) {
         auto_fix_prefixes(&mut server, &request, &diagnostic_accu);
     }
 
     server.send_message(DiagnosticResponse::new(request.get_id(), diagnostic_accu))
+}
+
+/// The variables bound by an element of a group graph pattern.
+fn bound_variables(element: SyntaxNode) -> Vec<Var> {
+    match element.kind() {
+        SyntaxKind::TriplesBlock => TriplesBlock::cast(element).map(|tb| tb.visible_variables()),
+        SyntaxKind::GraphPatternNotTriples => match GraphPatternNotTriples::cast(element) {
+            // NOTE: MINUS and FILTER never bind variables.
+            Some(
+                GraphPatternNotTriples::MinusGraphPattern(_) | GraphPatternNotTriples::Filter(_),
+            ) => None,
+            pattern => pattern.map(|pattern| pattern.visible_variables()),
+        },
+        _ => None,
+    }
+    .unwrap_or_default()
 }
 
 #[cfg(test)]

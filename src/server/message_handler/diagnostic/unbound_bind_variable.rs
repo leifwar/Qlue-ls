@@ -14,25 +14,92 @@
 //! NOTE: QLever deliberately does not warn about `FILTER`, since a filter may
 //! use variables that are bound later in the same group.
 
+use super::bound_variables;
 use crate::server::{
     Server,
     lsp::{
-        diagnostic::{Diagnostic, DiagnosticCode},
-        textdocument::TextDocumentItem,
+        diagnostic::{Diagnostic, DiagnosticCode, DiagnosticSeverity},
+        textdocument::{Range, TextDocumentItem},
     },
 };
-use ll_sparql_parser::ast::Unit;
-use std::sync::LazyLock;
+use ll_sparql_parser::{
+    ast::{AstNode, Bind, Expression, Unit, Var},
+    syntax_kind::SyntaxKind,
+};
+use std::{collections::HashSet, iter::successors, sync::LazyLock};
 
 pub static CODE: LazyLock<DiagnosticCode> =
     LazyLock::new(|| DiagnosticCode::String("unbound-bind-var".to_string()));
 
 pub(super) fn diagnostics(
-    _document: &TextDocumentItem,
-    _ast: &Unit,
+    document: &TextDocumentItem,
+    ast: &Unit,
     _server: &Server,
 ) -> Option<Vec<Diagnostic>> {
-    todo!()
+    let diagnostics: Vec<Diagnostic> = ast
+        .syntax()
+        .descendants()
+        .filter_map(Bind::cast)
+        .flat_map(|bind| {
+            // INFO: The BIND is wrapped in a `GraphPatternNotTriples`, whose siblings are the
+            // elements of the enclosing group.
+            let preceding_variables: HashSet<String> = successors(
+                bind.syntax()
+                    .parent()
+                    .and_then(|pattern| pattern.prev_sibling()),
+                |node| node.prev_sibling(),
+            )
+            .flat_map(bound_variables)
+            .map(|var| var.var_name())
+            .collect();
+            bind.syntax()
+                .first_child()
+                .and_then(Expression::cast)
+                .map(|expression| {
+                    expression
+                        .visible_variables()
+                        .into_iter()
+                        .filter(|variable| !inside_exists(variable, &expression))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+                .into_iter()
+                .filter(move |variable| !preceding_variables.contains(&variable.var_name()))
+        })
+        .map(|variable| Diagnostic {
+            range: Range::from_byte_offset_range(variable.syntax().text_range(), &document.text)
+                .expect("Every variable should be within the document"),
+            severity: DiagnosticSeverity::Warning,
+            code: Some((*CODE).clone()),
+            source: Some("qlue-ls".to_string()),
+            message: format!(
+                "The variable {} was used in the expression of a BIND clause \
+                 but was not previously bound in the query",
+                variable.syntax().text()
+            ),
+            data: None,
+        })
+        .collect();
+
+    (!diagnostics.is_empty()).then_some(diagnostics)
+}
+
+/// Whether `variable` occurs inside an `EXISTS`/`NOT EXISTS` of `expression`.
+///
+/// NOTE: Such variables live in the scope of the EXISTS pattern and need not
+/// be bound by the surrounding query.
+fn inside_exists(variable: &Var, expression: &Expression) -> bool {
+    variable
+        .syntax()
+        .ancestors()
+        // INFO: Only look within the expression, the BIND itself may be nested in an EXISTS.
+        .take_while(|node| node != expression.syntax())
+        .any(|node| {
+            matches!(
+                node.kind(),
+                SyntaxKind::ExistsFunc | SyntaxKind::NotExistsFunc
+            )
+        })
 }
 
 #[cfg(test)]
@@ -86,6 +153,31 @@ mod test {
         let result = run(diagnostics, text);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].range, range_of(text, "?o", 1));
+    }
+
+    #[test]
+    fn triggered_despite_preceding_filter() {
+        // NOTE: FILTER never binds variables.
+        let text = "SELECT * WHERE { FILTER (?o > 1) BIND (?o AS ?x) }";
+        let result = run(diagnostics, text);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].range, range_of(text, "?o", 1));
+    }
+
+    #[test]
+    fn triggered_next_to_exists() {
+        let text = "SELECT * WHERE { ?a <q> ?b BIND (EXISTS { ?a <p> ?x } || ?unbound AS ?e) }";
+        let result = run(diagnostics, text);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].range, range_of(text, "?unbound", 0));
+    }
+
+    #[test]
+    fn triggered_in_bind_nested_in_exists() {
+        let text = "SELECT * WHERE { ?s ?p ?o FILTER EXISTS { BIND (?a AS ?b) } }";
+        let result = run(diagnostics, text);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].range, range_of(text, "?a", 0));
     }
 
     #[test]

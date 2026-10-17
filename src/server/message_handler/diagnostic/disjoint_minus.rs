@@ -10,6 +10,7 @@
 //! flagged. Variables bound in a preceding `OPTIONAL` count, variables of a
 //! preceding `MINUS` do not.
 
+use super::bound_variables;
 use crate::server::{
     Server,
     lsp::{
@@ -17,11 +18,7 @@ use crate::server::{
         textdocument::{Range, TextDocumentItem},
     },
 };
-use ll_sparql_parser::{
-    SyntaxNode,
-    ast::{AstNode, GraphPatternNotTriples, MinusGraphPattern, TriplesBlock, Unit, Var},
-    syntax_kind::SyntaxKind,
-};
+use ll_sparql_parser::ast::{AstNode, MinusGraphPattern, Unit};
 use std::{collections::HashSet, iter::successors, sync::LazyLock};
 
 pub static CODE: LazyLock<DiagnosticCode> =
@@ -70,20 +67,6 @@ pub(super) fn diagnostics(
         })
         .collect();
     (!diagnostics.is_empty()).then_some(diagnostics)
-}
-
-/// The variables bound by an element of a group graph pattern.
-fn bound_variables(element: SyntaxNode) -> Vec<Var> {
-    match element.kind() {
-        SyntaxKind::TriplesBlock => TriplesBlock::cast(element).map(|tb| tb.visible_variables()),
-        SyntaxKind::GraphPatternNotTriples => match GraphPatternNotTriples::cast(element) {
-            // NOTE: MINUS never binds variables.
-            Some(GraphPatternNotTriples::MinusGraphPattern(_)) => None,
-            pattern => pattern.map(|pattern| pattern.visible_variables()),
-        },
-        _ => None,
-    }
-    .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -147,6 +130,15 @@ mod test {
             "SELECT * WHERE { ?a <is-a> ?b MINUS { ?a <is-a> ?y } }",
         );
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn triggered_despite_preceding_filter() {
+        // NOTE: FILTER never binds variables.
+        let text = "SELECT * WHERE { ?a <is-a> ?b FILTER (?x > 1) MINUS { ?x <is-a> ?y } }";
+        let result = run(diagnostics, text);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].range, range_of(text, "MINUS { ?x <is-a> ?y }", 0));
     }
 
     #[test]
