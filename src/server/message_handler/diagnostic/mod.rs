@@ -1,5 +1,6 @@
 mod auto_fix_prefixes;
 pub mod deprecated_nearest_neighbors;
+pub mod disjoint_minus;
 pub mod duplicate_prefix_declaration;
 pub mod groupby_star_selection;
 pub mod invalid_projection_variable;
@@ -14,8 +15,6 @@ pub mod unused_prefix_declaration;
 // once implemented, drop the `allow` and register them in `handle_diagnostic_request`.
 #[allow(dead_code)]
 pub mod bounding_box_nearest_neighbors;
-#[allow(dead_code)]
-pub mod disjoint_minus;
 #[allow(dead_code)]
 pub mod invalid_spatial_join_payload;
 #[allow(dead_code)]
@@ -78,6 +77,7 @@ pub(super) async fn handle_diagnostic_request(
     add_diagnostic!(duplicate_prefix_declaration::diagnostics);
     add_diagnostic!(groupby_star_selection::diagnostics);
     add_diagnostic!(deprecated_nearest_neighbors::diagnostics);
+    add_diagnostic!(disjoint_minus::diagnostics);
 
     if client_support_workspace_edits(&server) {
         auto_fix_prefixes(&mut server, &request, &diagnostic_accu);

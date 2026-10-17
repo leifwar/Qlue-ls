@@ -13,22 +13,77 @@
 use crate::server::{
     Server,
     lsp::{
-        diagnostic::{Diagnostic, DiagnosticCode},
-        textdocument::TextDocumentItem,
+        diagnostic::{Diagnostic, DiagnosticCode, DiagnosticSeverity},
+        textdocument::{Range, TextDocumentItem},
     },
 };
-use ll_sparql_parser::ast::Unit;
-use std::sync::LazyLock;
+use ll_sparql_parser::{
+    SyntaxNode,
+    ast::{AstNode, GraphPatternNotTriples, MinusGraphPattern, TriplesBlock, Unit, Var},
+    syntax_kind::SyntaxKind,
+};
+use std::{collections::HashSet, iter::successors, sync::LazyLock};
 
 pub static CODE: LazyLock<DiagnosticCode> =
     LazyLock::new(|| DiagnosticCode::String("disjoint-minus".to_string()));
 
+const MESSAGE: &str = "A MINUS clause that shares no variables with the patterns before it has no effect and is ignored.\n\
+    Use FILTER NOT EXISTS if you want to remove all results whenever the pattern of the MINUS clause matches.";
+
 pub(super) fn diagnostics(
-    _document: &TextDocumentItem,
-    _ast: &Unit,
+    document: &TextDocumentItem,
+    ast: &Unit,
     _server: &Server,
 ) -> Option<Vec<Diagnostic>> {
-    todo!()
+    let diagnostics: Vec<Diagnostic> = ast
+        .syntax()
+        .descendants()
+        .filter_map(MinusGraphPattern::cast)
+        .filter_map(|minus_graph_pattern| {
+            let minus_variables: HashSet<String> = minus_graph_pattern
+                .visible_variables()
+                .into_iter()
+                .map(|var| var.var_name())
+                .collect();
+            // INFO: The MINUS is wrapped in a `GraphPatternNotTriples`, whose siblings are the
+            // elements of the enclosing group.
+            let pattern = minus_graph_pattern.syntax().parent()?;
+            let preceding_variables: HashSet<String> =
+                successors(pattern.prev_sibling(), |node| node.prev_sibling())
+                    .flat_map(bound_variables)
+                    .map(|var| var.var_name())
+                    .collect();
+            minus_variables
+                .is_disjoint(&preceding_variables)
+                .then(|| Diagnostic {
+                    range: Range::from_byte_offset_range(
+                        minus_graph_pattern.syntax().text_range(),
+                        &document.text,
+                    )
+                    .expect("MinusGraphPattern should be withing the document"),
+                    severity: DiagnosticSeverity::Warning,
+                    code: Some((*CODE).clone()),
+                    source: Some("qlue-ls".to_string()),
+                    message: MESSAGE.to_string(),
+                    data: None,
+                })
+        })
+        .collect();
+    (!diagnostics.is_empty()).then_some(diagnostics)
+}
+
+/// The variables bound by an element of a group graph pattern.
+fn bound_variables(element: SyntaxNode) -> Vec<Var> {
+    match element.kind() {
+        SyntaxKind::TriplesBlock => TriplesBlock::cast(element).map(|tb| tb.visible_variables()),
+        SyntaxKind::GraphPatternNotTriples => match GraphPatternNotTriples::cast(element) {
+            // NOTE: MINUS never binds variables.
+            Some(GraphPatternNotTriples::MinusGraphPattern(_)) => None,
+            pattern => pattern.map(|pattern| pattern.visible_variables()),
+        },
+        _ => None,
+    }
+    .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -46,7 +101,10 @@ mod test {
         let result = run(diagnostics, text);
         assert_eq!(result.len(), 1);
         let diagnostic = &result[0];
-        assert_eq!(diagnostic.range, range_of(text, "MINUS", 0));
+        assert_eq!(
+            diagnostic.range,
+            range_of(text, "MINUS { ?x <is-a> ?y }", 0)
+        );
         assert_eq!(diagnostic.severity, DiagnosticSeverity::Warning);
         assert_eq!(diagnostic.code, Some((*CODE).clone()));
     }
@@ -56,7 +114,16 @@ mod test {
         let text = "SELECT * WHERE { MINUS { ?x <is-a> ?y } }";
         let result = run(diagnostics, text);
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].range, range_of(text, "MINUS", 0));
+        assert_eq!(result[0].range, range_of(text, "MINUS { ?x <is-a> ?y }", 0));
+    }
+
+    #[test]
+    fn triggered_by_minus_before_shared_variables() {
+        // NOTE: Only patterns before the MINUS count, `?a` is bound after it.
+        let text = "SELECT * WHERE { MINUS { ?a <is-a> ?y } ?a <is-a> ?b }";
+        let result = run(diagnostics, text);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].range, range_of(text, "MINUS { ?a <is-a> ?y }", 0));
     }
 
     #[test]
@@ -66,7 +133,10 @@ mod test {
         let result = run(diagnostics, text);
         assert_eq!(
             result.iter().map(|d| d.range.clone()).collect::<Vec<_>>(),
-            vec![range_of(text, "MINUS", 0), range_of(text, "MINUS", 1)]
+            vec![
+                range_of(text, "MINUS { ?x <is-a> ?y }", 0),
+                range_of(text, "MINUS { ?z <is-a> ?y }", 0)
+            ]
         );
     }
 
