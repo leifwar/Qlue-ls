@@ -1,4 +1,5 @@
 mod auto_fix_prefixes;
+pub mod deprecated_nearest_neighbors;
 pub mod duplicate_prefix_declaration;
 pub mod groupby_star_selection;
 pub mod invalid_projection_variable;
@@ -8,6 +9,31 @@ pub mod uncompacted_uri;
 pub mod undeclared_prefix;
 pub mod ungrouped_select_variable;
 pub mod unused_prefix_declaration;
+
+// TODO: Diagnostics for warnings reported by QLever. They are scaffolded only:
+// once implemented, drop the `allow` and register them in `handle_diagnostic_request`.
+#[allow(dead_code)]
+pub mod bounding_box_nearest_neighbors;
+#[allow(dead_code)]
+pub mod disjoint_minus;
+#[allow(dead_code)]
+pub mod invalid_spatial_join_payload;
+#[allow(dead_code)]
+pub mod unbound_bind_variable;
+#[allow(dead_code)]
+pub mod unbound_group_by_expression_variable;
+#[allow(dead_code)]
+pub mod unbound_group_by_variable;
+#[allow(dead_code)]
+pub mod unbound_having_variable;
+#[allow(dead_code)]
+pub mod unbound_order_by_expression_variable;
+#[allow(dead_code)]
+pub mod unbound_order_by_variable;
+#[allow(dead_code)]
+pub mod unbound_select_expression_variable;
+#[allow(dead_code)]
+pub mod ungrouped_order_by_variable;
 
 use crate::server::{
     Server,
@@ -51,6 +77,7 @@ pub(super) async fn handle_diagnostic_request(
     add_diagnostic!(syntax_error::diagnostics);
     add_diagnostic!(duplicate_prefix_declaration::diagnostics);
     add_diagnostic!(groupby_star_selection::diagnostics);
+    add_diagnostic!(deprecated_nearest_neighbors::diagnostics);
 
     if client_support_workspace_edits(&server) {
         auto_fix_prefixes(&mut server, &request, &diagnostic_accu);
@@ -63,12 +90,16 @@ pub(super) async fn handle_diagnostic_request(
 pub(super) mod test_utils {
     use crate::server::{
         Server,
-        lsp::{diagnostic::Diagnostic, textdocument::TextDocumentItem},
+        lsp::{
+            diagnostic::Diagnostic,
+            textdocument::{Range, TextDocumentItem},
+        },
     };
     use ll_sparql_parser::{
         ast::{AstNode, Unit},
         parse,
     };
+    use text_size::{TextRange, TextSize};
 
     pub(super) type DiagnosticProvider =
         fn(&TextDocumentItem, &Unit, &Server) -> Option<Vec<Diagnostic>>;
@@ -90,5 +121,21 @@ pub(super) mod test_utils {
         let (tree, _) = parse(text);
         let ast = Unit::cast(tree).expect("tree should be of kind QueryUnit or UpdateUnit");
         provider(&document, &ast, server).unwrap_or_default()
+    }
+
+    /// Range of the `occurrence`-th (0-based) match of `needle` in `text`.
+    pub(super) fn range_of(text: &str, needle: &str, occurrence: usize) -> Range {
+        let (start, _) = text
+            .match_indices(needle)
+            .nth(occurrence)
+            .expect("needle should occur often enough in text");
+        Range::from_byte_offset_range(
+            TextRange::at(
+                TextSize::from(start as u32),
+                TextSize::from(needle.len() as u32),
+            ),
+            text,
+        )
+        .expect("needle range should be in text")
     }
 }
