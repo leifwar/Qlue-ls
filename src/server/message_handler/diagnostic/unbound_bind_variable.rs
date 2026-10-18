@@ -71,6 +71,7 @@ pub(super) fn diagnostics(
                 .expect("Every variable should be within the document"),
             severity: DiagnosticSeverity::Warning,
             code: Some((*CODE).clone()),
+            code_description: None,
             source: Some("qlue-ls".to_string()),
             message: format!(
                 "The variable {} was used in the expression of a BIND clause \

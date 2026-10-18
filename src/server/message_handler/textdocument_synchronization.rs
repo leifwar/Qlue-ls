@@ -48,22 +48,21 @@ pub(super) async fn handle_did_save_notification(
     let server = server_rc.lock().await;
     let document = server.state.get_document(&uri)?;
     let (_, errors) = parse(&document.text);
-    server.send_message(PublishDiagnosticsNotification::new(
-        uri,
-        errors
-            .into_iter()
-            .take(1)
-            .map(|error| Diagnostic {
-                range: Range::from_byte_offset_range(error.span, &document.text)
-                    .expect("Parse error spans should be within the document"),
-                severity: DiagnosticSeverity::Error,
-                code: Some(diagnostic::syntax_error::CODE.clone()),
-                source: Some("Qlue-ls".to_string()),
-                message: error.message,
-                data: None,
-            })
-            .collect(),
-        None,
-    ))?;
+    let mut diagnostics: Vec<Diagnostic> = errors
+        .into_iter()
+        .take(1)
+        .map(|error| Diagnostic {
+            range: Range::from_byte_offset_range(error.span, &document.text)
+                .expect("Parse error spans should be within the document"),
+            severity: DiagnosticSeverity::Error,
+            code: Some(diagnostic::syntax_error::CODE.clone()),
+            code_description: None,
+            source: Some("Qlue-ls".to_string()),
+            message: error.message,
+            data: None,
+        })
+        .collect();
+    diagnostic::add_code_descriptions(&server, &mut diagnostics);
+    server.send_message(PublishDiagnosticsNotification::new(uri, diagnostics, None))?;
     Ok(())
 }

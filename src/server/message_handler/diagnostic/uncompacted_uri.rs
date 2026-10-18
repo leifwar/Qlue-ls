@@ -33,6 +33,7 @@ pub(super) fn diagnostics(
                     Some((prefix, namespace, curie)) => Some(Diagnostic {
                         source: None,
                         code: Some((*CODE).clone()),
+                        code_description: None,
                         range: Range::from_byte_offset_range(
                             iri.syntax().text_range(),
                             &document.text,

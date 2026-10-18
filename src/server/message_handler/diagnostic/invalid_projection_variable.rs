@@ -50,6 +50,7 @@ pub(super) fn diagnostics(
                     .contains(&variable.text())
                     .then_some(Diagnostic {
                         code: Some((*CODE).clone()),
+                        code_description: None,
                         range: Range::from_byte_offset_range(
                             variable.syntax().text_range(),
                             &document.text,

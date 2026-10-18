@@ -60,6 +60,7 @@ pub(super) fn diagnostics(
                     .expect("MinusGraphPattern should be withing the document"),
                     severity: DiagnosticSeverity::Warning,
                     code: Some((*CODE).clone()),
+                    code_description: None,
                     source: Some("qlue-ls".to_string()),
                     message: MESSAGE.to_string(),
                     data: None,

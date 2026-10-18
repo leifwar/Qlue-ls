@@ -72,6 +72,7 @@ pub(super) fn diagnostics(
             .filter_map(|var| {
                 (!group_vars_str.contains(&var.text())).then_some(Diagnostic {
                     code: Some((*CODE).clone()),
+                    code_description: None,
                     range: Range::from_byte_offset_range(var.syntax().text_range(), &document.text)
                         .unwrap(),
                     severity: DiagnosticSeverity::Error,
@@ -90,6 +91,7 @@ pub(super) fn diagnostics(
                                 .is_none_or(|derived_idx| *derived_idx > assignment_idx))
                         .then_some(Diagnostic {
                             code: Some((*CODE).clone()),
+                            code_description: None,
                             range: Range::from_byte_offset_range(
                                 var.syntax().text_range(),
                                 &document.text,

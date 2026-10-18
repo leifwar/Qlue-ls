@@ -33,6 +33,7 @@ pub(super) fn diagnostics(
                     .expect("Parse error spans should be within the document"),
                 severity: DiagnosticSeverity::Error,
                 code: Some((*CODE).clone()),
+                code_description: None,
                 source: Some("Qlue-ls".to_string()),
                 message: error.message,
                 data: None,

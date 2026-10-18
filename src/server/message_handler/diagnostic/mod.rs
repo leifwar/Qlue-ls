@@ -34,7 +34,11 @@ pub mod ungrouped_order_by_variable;
 
 use crate::server::{
     Server,
-    lsp::{DiagnosticRequest, DiagnosticResponse, errors::LSPError},
+    lsp::{
+        DiagnosticRequest, DiagnosticResponse,
+        diagnostic::{CodeDescription, Diagnostic, DiagnosticCode},
+        errors::LSPError,
+    },
 };
 use auto_fix_prefixes::{auto_fix_prefixes, client_support_workspace_edits};
 use futures::lock::Mutex;
@@ -86,8 +90,34 @@ pub(super) async fn handle_diagnostic_request(
     if client_support_workspace_edits(&server) {
         auto_fix_prefixes(&mut server, &request, &diagnostic_accu);
     }
+    add_code_descriptions(&server, &mut diagnostic_accu);
 
     server.send_message(DiagnosticResponse::new(request.get_id(), diagnostic_accu))
+}
+
+/// Documentation of the diagnostics, every diagnostic has a section anchored by its code.
+const DIAGNOSTICS_DOCS_URL: &str = "https://docs.qlue-ls.com/diagnostics/";
+
+/// Link every diagnostic with a code to its section in the documentation,
+/// if the client supports `codeDescription`.
+pub(super) fn add_code_descriptions(server: &Server, diagnostics: &mut [Diagnostic]) {
+    let client_supports_code_description = server
+        .client_capabilities
+        .as_ref()
+        .and_then(|capabilities| capabilities.text_document.as_ref())
+        .and_then(|text_document| text_document.publish_diagnostics.as_ref())
+        .and_then(|publish_diagnostics| publish_diagnostics.code_description_support)
+        .unwrap_or(false);
+    if !client_supports_code_description {
+        return;
+    }
+    for diagnostic in diagnostics {
+        if let Some(DiagnosticCode::String(code)) = &diagnostic.code {
+            diagnostic.code_description = Some(CodeDescription {
+                href: format!("{DIAGNOSTICS_DOCS_URL}#{code}"),
+            });
+        }
+    }
 }
 
 /// The variables bound by an element of a group graph pattern.
@@ -157,5 +187,60 @@ pub(super) mod test_utils {
             text,
         )
         .expect("needle range should be in text")
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::{add_code_descriptions, test_utils::run_with_server, undeclared_prefix};
+    use crate::server::{Server, lsp::diagnostic::CodeDescription};
+    use pretty_assertions::assert_eq;
+
+    fn server_with_code_description_support(support: bool) -> Server {
+        let mut server = Server::new(|_message| {});
+        server.client_capabilities = Some(
+            serde_json::from_value(serde_json::json!({
+                "textDocument": {
+                    "publishDiagnostics": { "codeDescriptionSupport": support }
+                }
+            }))
+            .expect("client capabilities should deserialize"),
+        );
+        server
+    }
+
+    #[test]
+    fn code_description_links_to_docs() {
+        let server = server_with_code_description_support(true);
+        let mut diagnostics = run_with_server(
+            undeclared_prefix::diagnostics,
+            &server,
+            "SELECT * WHERE { ?s ex:p ?o }",
+        );
+        add_code_descriptions(&server, &mut diagnostics);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].code_description,
+            Some(CodeDescription {
+                href: "https://docs.qlue-ls.com/diagnostics/#undeclared-prefix".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn code_description_omitted_without_client_support() {
+        for server in [
+            Server::new(|_message| {}),
+            server_with_code_description_support(false),
+        ] {
+            let mut diagnostics = run_with_server(
+                undeclared_prefix::diagnostics,
+                &server,
+                "SELECT * WHERE { ?s ex:p ?o }",
+            );
+            add_code_descriptions(&server, &mut diagnostics);
+            assert_eq!(diagnostics.len(), 1);
+            assert_eq!(diagnostics[0].code_description, None);
+        }
     }
 }

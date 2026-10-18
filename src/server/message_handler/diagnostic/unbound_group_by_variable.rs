@@ -52,6 +52,7 @@ pub(super) fn diagnostics(
                         .unwrap(),
                     severity: DiagnosticSeverity::Warning,
                     code: Some((*CODE).clone()),
+                    code_description: None,
                     source: Some("qlue-ls".to_string()),
                     message: format!(
                         "Variable {} was used by GROUP BY, but is not defined in the query body.",

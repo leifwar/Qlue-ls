@@ -46,6 +46,7 @@ pub(super) fn diagnostics(
                         severity: DiagnosticSeverity::Warning,
                         source: Some("qlue-ls".to_string()),
                         code: Some((*CODE).clone()),
+                        code_description: None,
                         message: format!(
                             "'{}' is declared here, but was never used\n",
                             prefix_declaration.prefix().unwrap_or("prefix".to_string())

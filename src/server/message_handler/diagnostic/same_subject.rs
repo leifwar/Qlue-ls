@@ -51,6 +51,7 @@ pub(crate) fn diagnostics(
                     .expect("triple text range should be in text"),
                     severity: DiagnosticSeverity::Information,
                     code: Some((*CODE).clone()),
+                    code_description: None,
                     source: None,
                     message: format!("Triple with same subject \"{}\" can be contracted", subject),
                     data: Some(ranges.clone()),
