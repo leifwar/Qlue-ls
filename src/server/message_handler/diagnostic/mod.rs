@@ -7,6 +7,7 @@ pub mod invalid_projection_variable;
 pub mod same_subject;
 pub mod syntax_error;
 pub mod unbound_bind_variable;
+pub mod unbound_group_by_variable;
 pub mod uncompacted_uri;
 pub mod undeclared_prefix;
 pub mod ungrouped_select_variable;
@@ -20,8 +21,6 @@ pub mod unused_prefix_declaration;
 // pub mod invalid_spatial_join_payload;
 #[allow(dead_code)]
 pub mod unbound_group_by_expression_variable;
-#[allow(dead_code)]
-pub mod unbound_group_by_variable;
 #[allow(dead_code)]
 pub mod unbound_having_variable;
 #[allow(dead_code)]
@@ -82,6 +81,7 @@ pub(super) async fn handle_diagnostic_request(
     add_diagnostic!(deprecated_nearest_neighbors::diagnostics);
     add_diagnostic!(disjoint_minus::diagnostics);
     add_diagnostic!(unbound_bind_variable::diagnostics);
+    add_diagnostic!(unbound_group_by_variable::diagnostics);
 
     if client_support_workspace_edits(&server) {
         auto_fix_prefixes(&mut server, &request, &diagnostic_accu);

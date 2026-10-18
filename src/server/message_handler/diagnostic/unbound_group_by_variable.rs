@@ -9,25 +9,84 @@
 //! `MINUS`, inside `EXISTS`/`NOT EXISTS` or in the trailing `VALUES` clause do
 //! not count as bound.
 
+use super::bound_variables;
 use crate::server::{
     Server,
     lsp::{
-        diagnostic::{Diagnostic, DiagnosticCode},
-        textdocument::TextDocumentItem,
+        diagnostic::{Diagnostic, DiagnosticCode, DiagnosticSeverity},
+        textdocument::{Range, TextDocumentItem},
     },
 };
-use ll_sparql_parser::ast::Unit;
-use std::sync::LazyLock;
+use ll_sparql_parser::{
+    ast::{AstNode, SelectQuery, Unit},
+    syntax_kind::SyntaxKind,
+};
+use std::{collections::HashSet, sync::LazyLock};
 
 pub static CODE: LazyLock<DiagnosticCode> =
     LazyLock::new(|| DiagnosticCode::String("unbound-group-by-var".to_string()));
 
 pub(super) fn diagnostics(
-    _document: &TextDocumentItem,
-    _ast: &Unit,
+    document: &TextDocumentItem,
+    ast: &Unit,
     _server: &Server,
 ) -> Option<Vec<Diagnostic>> {
-    todo!()
+    let result: Vec<Diagnostic> = ast
+        .syntax()
+        .descendants()
+        .filter_map(SelectQuery::cast)
+        .map(|select_query| {
+            let available_variables = body_variables(&select_query);
+            select_query
+                .soulution_modifier()
+                .and_then(|solution_modifier| solution_modifier.group_clause())
+                .iter()
+                .flat_map(|group_clause| {
+                    let group_variables = group_clause.visible_variables();
+                    group_variables
+                        .into_iter()
+                        .filter(|var| !available_variables.contains(&var.var_name()))
+                })
+                .map(|var| Diagnostic {
+                    range: Range::from_byte_offset_range(var.syntax().text_range(), &document.text)
+                        .unwrap(),
+                    severity: DiagnosticSeverity::Warning,
+                    code: Some((*CODE).clone()),
+                    source: Some("qlue-ls".to_string()),
+                    message: format!(
+                        "Variable {} was used by GROUP BY, but is not defined in the query body.",
+                        var.syntax().text()
+                    ),
+                    data: None,
+                })
+                .collect::<Vec<_>>()
+        })
+        .flatten()
+        .collect();
+    (!result.is_empty()).then_some(result)
+}
+
+/// The names of the variables bound by the query body (`WHERE` clause) of `select_query`.
+fn body_variables(select_query: &SelectQuery) -> HashSet<String> {
+    select_query
+        .where_clause()
+        .and_then(|where_clause| where_clause.group_graph_pattern())
+        .map(|ggp| {
+            match ggp
+                .syntax()
+                .children()
+                .find(|child| child.kind() == SyntaxKind::GroupGraphPatternSub)
+            {
+                // NOTE: Collected per element, since MINUS and FILTER do not bind variables.
+                Some(group) => group.children().flat_map(bound_variables).collect(),
+                // INFO: The body is a sub select.
+                None => ggp.visible_variables(),
+            }
+        })
+        .unwrap_or_default()
+        .into_iter()
+        .map(|var| var.var_name())
+        .collect()
 }
 
 #[cfg(test)]
@@ -82,6 +141,15 @@ mod test {
         let result = run(diagnostics, text);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].range, range_of(text, "?x", 1));
+    }
+
+    #[test]
+    fn triggered_by_select_alias() {
+        // NOTE: GROUP BY is evaluated before the SELECT clause, aliases are not visible to it.
+        let text = "SELECT (COUNT(?s) AS ?c) WHERE { ?s ?p ?o } GROUP BY ?c";
+        let result = run(diagnostics, text);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].range, range_of(text, "?c", 1));
     }
 
     #[test]
