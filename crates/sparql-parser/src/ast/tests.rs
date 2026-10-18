@@ -3,7 +3,7 @@ use rowan::TextRange;
 use crate::{
     ast::{
         AstNode, BlankPropertyList, Expression, GraphGraphPattern, GroupGraphPattern, QueryUnit,
-        Triple, TriplesBlock, UpdateUnit, WhereClause,
+        SelectQuery, Triple, TriplesBlock, UpdateUnit, WhereClause,
     },
     parse, parse_query, print_full_tree,
     syntax_kind::SyntaxKind,
@@ -224,6 +224,55 @@ fn values_clause() {
         .unwrap()
         .group_pattern_not_triples();
     assert_eq!(gpnt.len(), 1)
+}
+
+fn trailing_values_variables(select_query: &SelectQuery) -> Vec<String> {
+    select_query
+        .values_clause()
+        .map(|values_clause| values_clause.visible_variables())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|var| var.text())
+        .collect()
+}
+
+#[test]
+fn trailing_values_clause() {
+    for (input, expected) in [
+        ("SELECT * { }", vec![]),
+        ("SELECT * { } VALUES ?a { 1 2 }", vec!["?a"]),
+        (
+            "SELECT * { } VALUES (?a ?b) { (1 2) (3 UNDEF) }",
+            vec!["?a", "?b"],
+        ),
+        ("SELECT * { } VALUES () { () }", vec![]),
+        // INFO: The `VALUES` inside the query body is `InlineData`, not a `ValuesClause`.
+        ("SELECT * { VALUES ?a { 1 } }", vec![]),
+    ] {
+        let query = QueryUnit::cast(parse_query(input).0).unwrap();
+        assert_eq!(
+            trailing_values_variables(&query.select_query().unwrap()),
+            expected,
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn trailing_values_clause_of_sub_select() {
+    let input = "SELECT * { { SELECT ?a { } VALUES ?a { 1 } } } VALUES ?b { 2 }";
+    let root = parse_query(input).0;
+    let sub_select = root
+        .descendants()
+        .find(|node| node.kind() == SyntaxKind::SubSelect)
+        .and_then(SelectQuery::cast)
+        .unwrap();
+    assert_eq!(trailing_values_variables(&sub_select), vec!["?a"]);
+    let query = QueryUnit::cast(root).unwrap();
+    assert_eq!(
+        trailing_values_variables(&query.select_query().unwrap()),
+        vec!["?b"]
+    );
 }
 
 #[test]
