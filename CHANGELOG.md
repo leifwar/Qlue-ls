@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- new warnings for variables that are used but never bound, mirroring the
+  warnings QLever reports. They flag variables in `BIND` expressions that are
+  not bound before the `BIND`, and variables in `SELECT` expressions, `GROUP BY`,
+  `HAVING` and `ORDER BY` that are not bound in the query body (or, where
+  allowed, by an alias in the `SELECT` clause). For example `?pop` in
+  `ORDER BY DESC(?pop)` when the query body only binds `?population`.
+- new warning for `ORDER BY` variables in grouped queries that are neither
+  grouped nor an alias in the `SELECT` clause. This includes queries that are
+  grouped implicitly by an aggregate in the `SELECT` clause.
+- new warning for a `MINUS` that shares no variables with the patterns before
+  it. Such a `MINUS` removes nothing; use `FILTER NOT EXISTS` instead.
+- new warning for QLever's deprecated `<nearest-neighbors:...>` predicate,
+  pointing to the new `SERVICE` based spatial search. It is not reported when
+  the backend is known to run a different engine.
+- diagnostic codes now link to their documentation in editors that support
+  it (`codeDescription`), for example VS Code.
+- new [Diagnostics](https://docs.qlue-ls.com/diagnostics/) documentation page
+  with an example and a fix for every diagnostic.
+
 ## [3.12.1] - 2026-10-17
 
 ### Fixed
