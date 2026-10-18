@@ -232,6 +232,19 @@ impl SelectQuery {
     pub fn soulution_modifier(&self) -> Option<SolutionModifier> {
         SolutionModifier::cast(self.syntax.last_child()?)
     }
+
+    /// The trailing `VALUES` clause.
+    ///
+    /// NOTE: A sub select has its own `ValuesClause`, the one of a top level
+    ///       query is a sibling of the `SelectQuery` in the `Query` node.
+    pub fn values_clause(&self) -> Option<ValuesClause> {
+        match self.syntax.kind() {
+            SyntaxKind::SubSelect => Some(self.syntax.clone()),
+            _ => self.syntax.parent(),
+        }?
+        .children()
+        .find_map(ValuesClause::cast)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -464,6 +477,12 @@ pub struct Bind {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct InlineData {
+    syntax: SyntaxNode,
+}
+
+/// The trailing `VALUES` clause of a query or sub select.
+#[derive(Debug, PartialEq, Clone)]
+pub struct ValuesClause {
     syntax: SyntaxNode,
 }
 
@@ -1460,25 +1479,54 @@ impl AstNode for InlineData {
     }
 
     fn visible_variables(&self) -> Vec<Var> {
-        self.syntax()
-            .last_child()
-            .and_then(|data_block| data_block.first_child())
-            .and_then(|inline_data| match inline_data.kind() {
-                SyntaxKind::InlineDataOneVar => inline_data
-                    .first_child()
-                    .and_then(Var::cast)
-                    .map(|var| vec![var]),
-                SyntaxKind::InlineDataFull => Some(
-                    inline_data
-                        .children_with_tokens()
-                        .take_while(|child| child.kind() != SyntaxKind::RParen)
-                        .filter_map(|child| child.into_node().and_then(Var::cast))
-                        .collect(),
-                ),
-                _ => None,
-            })
-            .unwrap_or_default()
+        data_block_variables(&self.syntax)
     }
+}
+
+impl AstNode for ValuesClause {
+    #[inline]
+    fn kind() -> SyntaxKind {
+        SyntaxKind::ValuesClause
+    }
+
+    fn cast(syntax: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(syntax.kind()) {
+            Some(Self { syntax })
+        } else {
+            None
+        }
+    }
+
+    #[inline]
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+
+    fn visible_variables(&self) -> Vec<Var> {
+        data_block_variables(&self.syntax)
+    }
+}
+
+/// The variables declared in the header of the `DataBlock` child of `node`.
+fn data_block_variables(node: &SyntaxNode) -> Vec<Var> {
+    node.children()
+        .find(|child| child.kind() == SyntaxKind::DataBlock)
+        .and_then(|data_block| data_block.first_child())
+        .and_then(|inline_data| match inline_data.kind() {
+            SyntaxKind::InlineDataOneVar => inline_data
+                .first_child()
+                .and_then(Var::cast)
+                .map(|var| vec![var]),
+            SyntaxKind::InlineDataFull => Some(
+                inline_data
+                    .children_with_tokens()
+                    .take_while(|child| child.kind() != SyntaxKind::RParen)
+                    .filter_map(|child| child.into_node().and_then(Var::cast))
+                    .collect(),
+            ),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 impl AstNode for SelectClause {
