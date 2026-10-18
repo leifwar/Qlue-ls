@@ -260,7 +260,7 @@ fn trailing_values_clause() {
 
 #[test]
 fn trailing_values_clause_of_sub_select() {
-    let input = "SELECT * { { SELECT ?a { } VALUES ?a { 1 } } } VALUES ?b { 2 }";
+    let input = "SELECT * { { SELECT ?a { } GROUP BY ?a VALUES ?a { 1 } } } VALUES ?b { 2 }";
     let root = parse_query(input).0;
     let sub_select = root
         .descendants()
@@ -268,6 +268,9 @@ fn trailing_values_clause_of_sub_select() {
         .and_then(SelectQuery::cast)
         .unwrap();
     assert_eq!(trailing_values_variables(&sub_select), vec!["?a"]);
+    assert!(sub_select
+        .soulution_modifier()
+        .is_some_and(|modifier| modifier.group_clause().is_some()));
     let query = QueryUnit::cast(root).unwrap();
     assert_eq!(
         trailing_values_variables(&query.select_query().unwrap()),

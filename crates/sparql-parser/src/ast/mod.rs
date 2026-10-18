@@ -230,7 +230,9 @@ impl SelectQuery {
     }
 
     pub fn soulution_modifier(&self) -> Option<SolutionModifier> {
-        SolutionModifier::cast(self.syntax.last_child()?)
+        // WARNING: The `SolutionModifier` is not the last child of a sub select
+        //          with a trailing `ValuesClause`.
+        self.syntax.children().find_map(SolutionModifier::cast)
     }
 
     /// The trailing `VALUES` clause.
