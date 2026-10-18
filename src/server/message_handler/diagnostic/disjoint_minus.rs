@@ -10,12 +10,12 @@
 //! flagged. Variables bound in a preceding `OPTIONAL` count, variables of a
 //! preceding `MINUS` do not.
 
-use super::bound_variables;
+use super::{bound_variables, warning};
 use crate::server::{
     Server,
     lsp::{
-        diagnostic::{Diagnostic, DiagnosticCode, DiagnosticSeverity},
-        textdocument::{Range, TextDocumentItem},
+        diagnostic::{Diagnostic, DiagnosticCode},
+        textdocument::TextDocumentItem,
     },
 };
 use ll_sparql_parser::ast::{AstNode, MinusGraphPattern, Unit};
@@ -50,21 +50,14 @@ pub(super) fn diagnostics(
                     .flat_map(bound_variables)
                     .map(|var| var.var_name())
                     .collect();
-            minus_variables
-                .is_disjoint(&preceding_variables)
-                .then(|| Diagnostic {
-                    range: Range::from_byte_offset_range(
-                        minus_graph_pattern.syntax().text_range(),
-                        &document.text,
-                    )
-                    .expect("MinusGraphPattern should be withing the document"),
-                    severity: DiagnosticSeverity::Warning,
-                    code: Some((*CODE).clone()),
-                    code_description: None,
-                    source: Some("qlue-ls".to_string()),
-                    message: MESSAGE.to_string(),
-                    data: None,
-                })
+            minus_variables.is_disjoint(&preceding_variables).then(|| {
+                warning(
+                    document,
+                    minus_graph_pattern.syntax(),
+                    &CODE,
+                    MESSAGE.to_string(),
+                )
+            })
         })
         .collect();
     (!diagnostics.is_empty()).then_some(diagnostics)

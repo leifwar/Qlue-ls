@@ -170,6 +170,15 @@ mod test {
     }
 
     #[test]
+    fn not_triggered_by_variables_local_to_exists() {
+        let result = run(
+            diagnostics,
+            "SELECT ?s (EXISTS { ?s ?b ?c } AS ?e) WHERE { ?s ?p ?o } GROUP BY ?s",
+        );
+        assert!(result.is_empty());
+    }
+
+    #[test]
     fn not_triggered_without_group_by() {
         let result = run(diagnostics, "SELECT ?s ?o WHERE { ?s ?p ?o }");
         assert!(result.is_empty());

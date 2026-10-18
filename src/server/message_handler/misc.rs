@@ -52,12 +52,12 @@ pub(super) fn may_be_qlever_at_token(server: &Server, ast: &Unit, token: &Syntax
         .is_none_or(|engine| engine == SparqlEngine::QLever)
 }
 
-// Creates the the prefix declaration for any IRI.
-// If the iri is raw (no prefix used) None is returned.
-// If the iri is a prefixed name the uri prefix is resolved in this order.
-// 1. Is there a prefix declaration at the top of the document declaring this prefix.
-//    The first prefix found is used.
-// 2. Is this prefix stored in the iri converter of the given backend.
+/// Creates the prefix declaration for any IRI.
+/// If the iri is raw (no prefix used) None is returned.
+/// If the iri is a prefixed name the uri prefix is resolved in this order:
+/// 1. Is there a prefix declaration at the top of the document declaring this prefix.
+///    The first prefix found is used.
+/// 2. Is this prefix stored in the iri converter of the given backend.
 pub(super) fn get_iri_prefix_declaration(
     iri: &Iri,
     ast: &Unit,
@@ -72,9 +72,9 @@ pub(super) fn get_iri_prefix_declaration(
     })
 }
 
-// Finds the prefix declaration at the top of the document for any IRI.
-// If the iri is raw (no prefix used) or its prefix is not declared, None is returned.
-// If the prefix is declared multiple times, the first declaration is used.
+/// Finds the prefix declaration at the top of the document for any IRI.
+/// If the iri is raw (no prefix used) or its prefix is not declared, None is returned.
+/// If the prefix is declared multiple times, the first declaration is used.
 pub(super) fn get_prologue_prefix_declaration(iri: &Iri, ast: &Unit) -> Option<(String, String)> {
     let used_prefix = iri.prefixed_name()?.prefix();
     ast.prologue().and_then(|prologue| {

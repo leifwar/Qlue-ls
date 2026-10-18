@@ -14,18 +14,15 @@
 //! NOTE: QLever deliberately does not warn about `FILTER`, since a filter may
 //! use variables that are bound later in the same group.
 
-use super::bound_variables;
+use super::{bound_variables, query_scope::used_variables, warning};
 use crate::server::{
     Server,
     lsp::{
-        diagnostic::{Diagnostic, DiagnosticCode, DiagnosticSeverity},
-        textdocument::{Range, TextDocumentItem},
+        diagnostic::{Diagnostic, DiagnosticCode},
+        textdocument::TextDocumentItem,
     },
 };
-use ll_sparql_parser::{
-    ast::{AstNode, Bind, Expression, Unit, Var},
-    syntax_kind::SyntaxKind,
-};
+use ll_sparql_parser::ast::{AstNode, Bind, Expression, Unit};
 use std::{collections::HashSet, iter::successors, sync::LazyLock};
 
 pub static CODE: LazyLock<DiagnosticCode> =
@@ -55,52 +52,22 @@ pub(super) fn diagnostics(
             bind.syntax()
                 .first_child()
                 .and_then(Expression::cast)
-                .map(|expression| {
-                    expression
-                        .visible_variables()
-                        .into_iter()
-                        .filter(|variable| !inside_exists(variable, &expression))
-                        .collect::<Vec<_>>()
-                })
+                .map(|expression| used_variables(expression.syntax()))
                 .unwrap_or_default()
                 .into_iter()
                 .filter(move |variable| !preceding_variables.contains(&variable.var_name()))
         })
-        .map(|variable| Diagnostic {
-            range: Range::from_byte_offset_range(variable.syntax().text_range(), &document.text)
-                .expect("Every variable should be within the document"),
-            severity: DiagnosticSeverity::Warning,
-            code: Some((*CODE).clone()),
-            code_description: None,
-            source: Some("qlue-ls".to_string()),
-            message: format!(
+        .map(|variable| {
+            let message = format!(
                 "The variable {} was used in the expression of a BIND clause \
                  but was not previously bound in the query",
                 variable.syntax().text()
-            ),
-            data: None,
+            );
+            warning(document, variable.syntax(), &CODE, message)
         })
         .collect();
 
     (!diagnostics.is_empty()).then_some(diagnostics)
-}
-
-/// Whether `variable` occurs inside an `EXISTS`/`NOT EXISTS` of `expression`.
-///
-/// NOTE: Such variables live in the scope of the EXISTS pattern and need not
-/// be bound by the surrounding query.
-fn inside_exists(variable: &Var, expression: &Expression) -> bool {
-    variable
-        .syntax()
-        .ancestors()
-        // INFO: Only look within the expression, the BIND itself may be nested in an EXISTS.
-        .take_while(|node| node != expression.syntax())
-        .any(|node| {
-            matches!(
-                node.kind(),
-                SyntaxKind::ExistsFunc | SyntaxKind::NotExistsFunc
-            )
-        })
 }
 
 #[cfg(test)]

@@ -14,25 +14,57 @@
 //! A variable wrapped in `ASC(...)`/`DESC(...)` counts as a plain variable,
 //! expressions are handled by `unbound_order_by_expression_variable`.
 
-use crate::server::{
-    Server,
-    lsp::{
-        diagnostic::{Diagnostic, DiagnosticCode},
-        textdocument::TextDocumentItem,
-    },
+use super::{
+    query_scope::{OrderKey, QueryScope},
+    warning,
 };
-use ll_sparql_parser::ast::Unit;
-use std::sync::LazyLock;
+use crate::server::lsp::{
+    diagnostic::{Diagnostic, DiagnosticCode},
+    textdocument::TextDocumentItem,
+};
+use ll_sparql_parser::ast::AstNode;
+use std::{collections::HashSet, sync::LazyLock};
 
 pub static CODE: LazyLock<DiagnosticCode> =
     LazyLock::new(|| DiagnosticCode::String("ungrouped-order-by-var".to_string()));
 
 pub(super) fn diagnostics(
-    _document: &TextDocumentItem,
-    _ast: &Unit,
-    _server: &Server,
+    document: &TextDocumentItem,
+    scopes: &[QueryScope],
 ) -> Option<Vec<Diagnostic>> {
-    todo!()
+    let diagnostics: Vec<Diagnostic> = scopes
+        .iter()
+        // INFO: Ungrouped queries are handled by `unbound_order_by_variable`.
+        .filter(|scope| scope.is_grouped())
+        .flat_map(|scope| {
+            let allowed_variables: HashSet<String> = scope
+                .grouped_variables()
+                .into_iter()
+                .chain(scope.select_aliases().iter().cloned())
+                .chain(scope.values_variables().iter().cloned())
+                .collect();
+            let implicit_note = if scope.is_implicitly_grouped() {
+                " Note: The GROUP BY in this query is implicit because an aggregate expression \
+                 was used in the SELECT clause"
+            } else {
+                ""
+            };
+            scope.order_keys().iter().filter_map(move |key| match key {
+                OrderKey::Variable(var) if !allowed_variables.contains(&var.var_name()) => {
+                    let message = format!(
+                        "Variable {} was used in an ORDER BY clause, \
+                         but is neither grouped nor created as an alias in the SELECT clause.{}",
+                        var.syntax().text(),
+                        implicit_note
+                    );
+                    Some((var.syntax().clone(), message))
+                }
+                _ => None,
+            })
+        })
+        .map(|(node, message)| warning(document, &node, &CODE, message))
+        .collect();
+    (!diagnostics.is_empty()).then_some(diagnostics)
 }
 
 #[cfg(test)]
@@ -40,14 +72,14 @@ mod test {
     use super::{CODE, diagnostics};
     use crate::server::{
         lsp::diagnostic::DiagnosticSeverity,
-        message_handler::diagnostic::test_utils::{range_of, run},
+        message_handler::diagnostic::test_utils::{range_of, run_scoped},
     };
     use pretty_assertions::assert_eq;
 
     #[test]
     fn triggered_by_ungrouped_variable() {
         let text = "SELECT ?p WHERE { ?s ?p ?o } GROUP BY ?p ORDER BY ?s";
-        let result = run(diagnostics, text);
+        let result = run_scoped(diagnostics, text);
         assert_eq!(result.len(), 1);
         let diagnostic = &result[0];
         assert_eq!(diagnostic.range, range_of(text, "?s", 1));
@@ -59,7 +91,7 @@ mod test {
     #[test]
     fn triggered_with_implicit_grouping() {
         let text = "SELECT (COUNT(?o) AS ?c) WHERE { ?s ?p ?o } ORDER BY ?s";
-        let result = run(diagnostics, text);
+        let result = run_scoped(diagnostics, text);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].range, range_of(text, "?s", 1));
         assert!(result[0].message.contains("implicit"));
@@ -68,7 +100,7 @@ mod test {
     #[test]
     fn triggered_despite_unrelated_trailing_values() {
         let text = "SELECT ?p WHERE { ?s ?p ?o } GROUP BY ?p ORDER BY ?s VALUES ?v { 1 }";
-        let result = run(diagnostics, text);
+        let result = run_scoped(diagnostics, text);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].range, range_of(text, "?s", 1));
     }
@@ -77,14 +109,14 @@ mod test {
     fn triggered_next_to_unbound_group_by_variable() {
         // INFO: The unbound `?x` in GROUP BY is reported by `unbound_group_by_variable`.
         let text = "SELECT ?x WHERE { } GROUP BY ?x ORDER BY ?y";
-        let result = run(diagnostics, text);
+        let result = run_scoped(diagnostics, text);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].range, range_of(text, "?y", 0));
     }
 
     #[test]
     fn not_triggered_by_grouped_variable() {
-        let result = run(
+        let result = run_scoped(
             diagnostics,
             "SELECT ?p WHERE { ?s ?p ?o } GROUP BY ?p ORDER BY ?p",
         );
@@ -92,8 +124,27 @@ mod test {
     }
 
     #[test]
+    fn not_triggered_by_bracketted_grouped_variable() {
+        let result = run_scoped(
+            diagnostics,
+            "SELECT ?s WHERE { ?s ?p ?o } GROUP BY ((?s)) ORDER BY ?s",
+        );
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn not_triggered_by_aggregate_of_exists_sub_select() {
+        // INFO: The aggregate belongs to the sub select, the outer query is not grouped.
+        let result = run_scoped(
+            diagnostics,
+            "SELECT ?s (EXISTS { SELECT (COUNT(*) AS ?c) WHERE { ?a ?b ?d } } AS ?e) WHERE { ?s ?p ?o } ORDER BY ?o",
+        );
+        assert!(result.is_empty());
+    }
+
+    #[test]
     fn not_triggered_by_select_alias() {
-        let result = run(
+        let result = run_scoped(
             diagnostics,
             "SELECT ?p (COUNT(?s) AS ?c) WHERE { ?s ?p ?o } GROUP BY ?p ORDER BY DESC(?c)",
         );
@@ -102,7 +153,7 @@ mod test {
 
     #[test]
     fn not_triggered_by_trailing_values() {
-        let result = run(
+        let result = run_scoped(
             diagnostics,
             "SELECT ?p WHERE { ?s ?p ?o } GROUP BY ?p ORDER BY ?v VALUES ?v { 1 }",
         );
@@ -112,7 +163,7 @@ mod test {
     #[test]
     fn not_triggered_without_grouping() {
         // INFO: Ungrouped queries are handled by `unbound_order_by_variable`.
-        let result = run(diagnostics, "SELECT ?p WHERE { ?s ?p ?o } ORDER BY ?s");
+        let result = run_scoped(diagnostics, "SELECT ?p WHERE { ?s ?p ?o } ORDER BY ?s");
         assert!(result.is_empty());
     }
 }
