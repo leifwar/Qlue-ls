@@ -2,10 +2,12 @@ use rowan::TextRange;
 
 use crate::{
     ast::{
-        AstNode, BlankPropertyList, GroupGraphPattern, QueryUnit, Triple, TriplesBlock, UpdateUnit,
-        WhereClause,
+        AstNode, BlankPropertyList, Expression, GraphGraphPattern, GroupGraphPattern, QueryUnit,
+        Triple, TriplesBlock, UpdateUnit, WhereClause,
     },
-    parse, parse_query, print_full_tree, SyntaxNode,
+    parse, parse_query, print_full_tree,
+    syntax_kind::SyntaxKind,
+    SyntaxNode,
 };
 
 fn walk(node: SyntaxNode, mut path: Vec<usize>) -> Option<SyntaxNode> {
@@ -44,6 +46,91 @@ fn expression() {
     );
 }
 
+/// The outermost expression of each `GroupCondition` and `SelectClause` assignment
+/// of the top level query.
+fn top_level_expressions(input: &str) -> Vec<Expression> {
+    parse_query(input)
+        .0
+        .descendants()
+        .filter(|node| {
+            matches!(
+                node.kind(),
+                SyntaxKind::GroupCondition | SyntaxKind::SelectClause
+            ) && !node
+                .ancestors()
+                .any(|ancestor| ancestor.kind() == SyntaxKind::SubSelect)
+        })
+        .flat_map(|node| node.children().filter_map(Expression::cast))
+        .collect()
+}
+
+#[test]
+fn expression_as_var() {
+    let expressions = top_level_expressions(
+        "SELECT * { } GROUP BY (?a) ((?b)) (((?c))) (?d + 1) ((?e) + 1) (STR(?f))",
+    );
+    assert_eq!(
+        expressions
+            .iter()
+            .map(|expression| expression.as_var().map(|var| var.text()))
+            .collect::<Vec<_>>(),
+        vec![
+            Some("?a".to_string()),
+            Some("?b".to_string()),
+            Some("?c".to_string()),
+            None,
+            None,
+            None
+        ]
+    );
+}
+
+#[test]
+fn expression_as_var_with_unclosed_bracket() {
+    let expressions = top_level_expressions("SELECT * { } GROUP BY ((?a)");
+    assert!(expressions
+        .iter()
+        .all(|expression| expression.as_var().is_none_or(|var| var.text() == "?a")));
+}
+
+#[test]
+fn expression_unaggregated_variables_skip_nested_patterns() {
+    let expressions = top_level_expressions(
+        "SELECT (IF(?a, EXISTS { ?s ?p ?o }, NOT EXISTS { ?s ?p ?a }) AS ?x) \
+         (EXISTS { SELECT ?s { ?s ?p ?o } } && ?b AS ?y) { }",
+    );
+    assert_eq!(
+        expressions
+            .iter()
+            .map(|expression| {
+                expression
+                    .unaggregated_variables()
+                    .into_iter()
+                    .map(|var| var.text())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>(),
+        vec![vec!["?a"], vec!["?b"]]
+    );
+}
+
+#[test]
+fn expression_has_aggregate() {
+    let expressions = top_level_expressions(
+        "SELECT (COUNT(*) AS ?a) (1 + SUM(?x) AS ?b) (STR(?x) AS ?c) \
+         (EXISTS { SELECT (COUNT(*) AS ?n) { ?s ?p ?o } } AS ?d) \
+         (NOT EXISTS { { SELECT (MAX(?o) AS ?m) { ?s ?p ?o } } } AS ?e) \
+         (COUNT(*) + IF(EXISTS { ?s ?p ?o }, 1, 0) AS ?f) { }",
+    );
+    assert_eq!(
+        expressions
+            .iter()
+            .map(|expression| expression.has_aggregate())
+            .collect::<Vec<_>>(),
+        vec![true, true, false, false, false, true]
+    );
+}
+
 #[test]
 fn group_clause_visible_variables() {
     // NOTE: A GroupCondition binds a variable if it is a plain variable ("?a"),
@@ -64,6 +151,27 @@ fn group_clause_visible_variables() {
             .map(|var| var.text())
             .collect::<Vec<_>>(),
         vec!["?a", "?b", "?c"]
+    );
+}
+
+#[test]
+fn graph_graph_pattern_visible_variables() {
+    let input = "SELECT * { GRAPH ?g { ?s ?p ?o } GRAPH <x> { ?a ?b ?c } }";
+    let root = parse_query(input).0;
+    let visible: Vec<Vec<String>> = root
+        .descendants()
+        .filter_map(GraphGraphPattern::cast)
+        .map(|pattern| {
+            pattern
+                .visible_variables()
+                .into_iter()
+                .map(|var| var.text())
+                .collect()
+        })
+        .collect();
+    assert_eq!(
+        visible,
+        vec![vec!["?g", "?s", "?p", "?o"], vec!["?a", "?b", "?c"]]
     );
 }
 

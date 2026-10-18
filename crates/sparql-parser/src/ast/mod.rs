@@ -319,11 +319,19 @@ pub struct Expression {
 }
 
 impl Expression {
-    /// Returns the variable, if this expression consists of just a single variable.
+    /// Returns the variable, if this expression consists of just a single,
+    /// possibly bracketted, variable.
     pub fn as_var(&self) -> Option<Var> {
         // NOTE: A plain variable is wrapped in a chain of single-child expression nodes.
         let mut node = self.syntax.clone();
         while !Var::can_cast(node.kind()) {
+            // INFO: Redundant brackets, as in "((?a))", don't change the expression.
+            if node.kind() == SyntaxKind::BrackettedExpression {
+                node = node
+                    .children()
+                    .find(|child| child.kind() == SyntaxKind::Expression)?;
+                continue;
+            }
             let mut children = node.children_with_tokens().filter(|child| {
                 !matches!(child.kind(), SyntaxKind::WHITESPACE | SyntaxKind::Comment)
             });
@@ -336,11 +344,32 @@ impl Expression {
         Var::cast(node)
     }
 
+    /// Whether this expression contains an aggregate that belongs to it.
+    pub fn has_aggregate(&self) -> bool {
+        // NOTE: Aggregates inside a nested pattern, as in
+        //       "EXISTS { SELECT (COUNT(*) AS ?c) { ... } }", belong to the sub select.
+        let mut stack = vec![self.syntax.clone()];
+        while let Some(node) = stack.pop() {
+            match node.kind() {
+                SyntaxKind::Aggregate => return true,
+                SyntaxKind::GroupGraphPattern => {}
+                _ => stack.extend(node.children()),
+            }
+        }
+        false
+    }
+
+    /// The variables of this expression that are not inside an aggregate.
     pub fn unaggregated_variables(&self) -> Vec<Var> {
+        // NOTE: Variables inside a nested pattern, as in "EXISTS { ?s ?p ?o }",
+        //       belong to that pattern and are skipped.
         let mut res = vec![];
         let mut stack = vec![self.syntax.clone()];
         while let Some(node) = stack.pop() {
-            if node.kind() != SyntaxKind::Aggregate {
+            if !matches!(
+                node.kind(),
+                SyntaxKind::Aggregate | SyntaxKind::GroupGraphPattern
+            ) {
                 stack.extend(node.children());
             }
             if let Some(var) = Var::cast(node) {
@@ -1315,9 +1344,20 @@ impl AstNode for GraphGraphPattern {
     }
 
     fn visible_variables(&self) -> Vec<Var> {
-        self.group_graph_pattern()
-            .map(|ggp| ggp.visible_variables())
-            .unwrap_or_default()
+        // NOTE: In `GRAPH ?g { ... }` the graph variable ?g is bound to the
+        //       named graph each solution was matched in.
+        self.syntax
+            .children()
+            .find(|child| child.kind() == SyntaxKind::VarOrIri)
+            .and_then(|child| child.first_child())
+            .and_then(Var::cast)
+            .into_iter()
+            .chain(
+                self.group_graph_pattern()
+                    .map(|ggp| ggp.visible_variables())
+                    .unwrap_or_default(),
+            )
+            .collect()
     }
 }
 
