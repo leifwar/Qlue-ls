@@ -72,6 +72,7 @@ pub(super) fn diagnostics(
             .filter_map(|var| {
                 (!group_vars_str.contains(&var.text())).then_some(Diagnostic {
                     code: Some((*CODE).clone()),
+                    code_description: None,
                     range: Range::from_byte_offset_range(var.syntax().text_range(), &document.text)
                         .unwrap(),
                     severity: DiagnosticSeverity::Error,
@@ -90,6 +91,7 @@ pub(super) fn diagnostics(
                                 .is_none_or(|derived_idx| *derived_idx > assignment_idx))
                         .then_some(Diagnostic {
                             code: Some((*CODE).clone()),
+                            code_description: None,
                             range: Range::from_byte_offset_range(
                                 var.syntax().text_range(),
                                 &document.text,
@@ -116,6 +118,7 @@ mod test {
         lsp::{diagnostic::DiagnosticSeverity, textdocument::Range},
         message_handler::diagnostic::test_utils::run,
     };
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn triggered_by_ungrouped_selected_variable() {
@@ -162,6 +165,15 @@ mod test {
         let result = run(
             diagnostics,
             "SELECT ?s (COUNT(?o) AS ?c) (?c + 1 AS ?d) WHERE { ?s ?p ?o } GROUP BY ?s",
+        );
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn not_triggered_by_variables_local_to_exists() {
+        let result = run(
+            diagnostics,
+            "SELECT ?s (EXISTS { ?s ?b ?c } AS ?e) WHERE { ?s ?p ?o } GROUP BY ?s",
         );
         assert!(result.is_empty());
     }

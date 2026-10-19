@@ -45,6 +45,7 @@ fn invalid_selection(
         range: Range::from_byte_offset_range(star_token.text_range(), &document.text).expect("The star text range should be in text"),
         severity: DiagnosticSeverity::Error,
         code: Some((*CODE).clone()),
+        code_description: None,
                 source: Some("qlue-ls".to_string()),
         message: "Selecting * is not allowed when using GROUP BY!\nSelect grouped variables or aggregates.".to_string(),
         data: None
@@ -60,6 +61,7 @@ mod test {
         message_handler::diagnostic::test_utils::run,
     };
     use indoc::indoc;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn triggered_by_star_with_group_by() {

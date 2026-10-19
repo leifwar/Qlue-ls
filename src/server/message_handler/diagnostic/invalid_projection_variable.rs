@@ -50,6 +50,7 @@ pub(super) fn diagnostics(
                     .contains(&variable.text())
                     .then_some(Diagnostic {
                         code: Some((*CODE).clone()),
+                        code_description: None,
                         range: Range::from_byte_offset_range(
                             variable.syntax().text_range(),
                             &document.text,
@@ -75,6 +76,7 @@ mod test {
         lsp::{diagnostic::DiagnosticSeverity, textdocument::Range},
         message_handler::diagnostic::test_utils::run,
     };
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn triggered_by_assignment_to_body_variable() {

@@ -4,9 +4,8 @@ use crate::{
     server::{
         Server,
         lsp::errors::{ErrorCode, LSPError},
-        message_handler::misc::resolve_backend_at_token,
+        message_handler::misc::{get_iri_prefix_declaration, resolve_backend_at_token},
         sparql_operations::execute_query,
-        uri_converter::Converter,
     },
     sparql::results::SparqlResultsBody,
 };
@@ -97,33 +96,4 @@ pub(super) async fn hover(
             None => Ok(None),
         }
     }
-}
-
-// Creates the the prefix declaration for any IRI.
-// If the iri is raw (no prefix used) None is returned.
-// If the iri is a prefixed name the uri prefix is resolved in this order.
-// 1. Is there a prefix declaration at the top of the document declaring this prefix.
-//    The first prefix found is used.
-// 2. Is this prefix stored in the iri converter of the given backend.
-fn get_iri_prefix_declaration(
-    iri: &Iri,
-    ast: &Unit,
-    converter: &Converter,
-) -> Option<(String, String)> {
-    let used_prefix = iri.prefixed_name()?.prefix();
-    let prologue_def = ast.prologue().and_then(|prologue| {
-        prologue
-            .prefix_declarations()
-            .iter()
-            .find_map(|prefix_declaration| {
-                let prefix = prefix_declaration.prefix()?;
-                let uri_prefix = prefix_declaration.raw_uri_prefix()?;
-                (used_prefix == prefix).then_some((prefix, uri_prefix))
-            })
-    });
-    let storred_def = converter
-        .find_by_prefix(&used_prefix)
-        .cloned()
-        .map(|record| (used_prefix, record.uri_prefix));
-    prologue_def.or(storred_def)
 }

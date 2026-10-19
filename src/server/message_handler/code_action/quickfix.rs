@@ -255,6 +255,7 @@ mod test {
             message: String::new(),
             source: None,
             code: None,
+            code_description: None,
             data: Some(LSPAny::LSPArray(vec![
                 LSPAny::String("schema".to_string()),
                 LSPAny::String("http://schema.org/".to_string()),
@@ -294,6 +295,7 @@ mod test {
             message: String::new(),
             source: None,
             code: None,
+            code_description: None,
             data: Some(LSPAny::LSPArray(vec![
                 LSPAny::String("schema".to_string()),
                 LSPAny::String("http://schema.org".to_string()),
@@ -326,6 +328,7 @@ mod test {
             message: String::new(),
             source: None,
             code: None,
+            code_description: None,
             data: Some(LSPAny::LSPArray(vec![
                 LSPAny::String("ex".to_string()),
                 LSPAny::String("http://example.org/".to_string()),
@@ -365,6 +368,7 @@ mod test {
             message: String::new(),
             source: None,
             code: None,
+            code_description: None,
             data: Some(LSPAny::LSPArray(vec![
                 LSPAny::String("ex".to_string()),
                 LSPAny::String("http://example.org/".to_string()),
@@ -402,6 +406,7 @@ mod test {
             message: String::new(),
             source: None,
             code: None,
+            code_description: None,
             data: Some(LSPAny::LSPArray(vec![
                 LSPAny::String("ex".to_string()),
                 LSPAny::String("http://example.org/".to_string()),

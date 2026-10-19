@@ -23,7 +23,14 @@ pub(crate) struct Diagnostic {
      */
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) code: Option<DiagnosticCode>,
-    // codeDescription: CodeDescription
+    /**
+     * An optional property to describe the error code.
+     * Requires the code field (above) to be present/not null.
+     *
+     * @since 3.16.0
+     */
+    #[serde(rename = "codeDescription", skip_serializing_if = "Option::is_none")]
+    pub(crate) code_description: Option<CodeDescription>,
     /**
      * A human-readable string describing the source of this
      * diagnostic, e.g. 'typescript' or 'super lint'.
@@ -53,6 +60,15 @@ pub(crate) struct Diagnostic {
 pub(crate) enum DiagnosticCode {
     String(String),
     Integer(i32),
+}
+
+// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#codeDescription
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub(crate) struct CodeDescription {
+    /**
+     * An URI to open with more information about the diagnostic error.
+     */
+    pub(crate) href: String,
 }
 
 // https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#diagnosticSeverity

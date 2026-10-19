@@ -37,6 +37,7 @@ pub(super) fn diagnostics(
                 .expect("prefix declaration text range should be in text"),
                 severity: DiagnosticSeverity::Warning,
                 code: Some((*CODE).clone()),
+                code_description: None,
                 source: Some("qlue-ls".to_string()),
                 message: format!("The prefix \"{}\" was already declared.\nPrefix declarations should be unique.", prefix),
                 data: Some(LSPAny::String(prefix))
@@ -56,6 +57,7 @@ mod test {
         message_handler::diagnostic::test_utils::run,
     };
     use indoc::indoc;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn triggered_by_duplicate_prefix() {

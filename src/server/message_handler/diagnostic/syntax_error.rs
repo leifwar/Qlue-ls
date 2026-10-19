@@ -33,6 +33,7 @@ pub(super) fn diagnostics(
                     .expect("Parse error spans should be within the document"),
                 severity: DiagnosticSeverity::Error,
                 code: Some((*CODE).clone()),
+                code_description: None,
                 source: Some("Qlue-ls".to_string()),
                 message: error.message,
                 data: None,
@@ -47,6 +48,7 @@ mod test {
     use crate::server::{
         lsp::diagnostic::DiagnosticSeverity, message_handler::diagnostic::test_utils::run,
     };
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn triggered_by_invalid_query() {
