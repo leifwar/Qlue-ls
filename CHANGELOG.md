@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.13.1] - 2026-10-19
+
 ### Added
 
 - new warnings for variables that are used but never bound, mirroring the
