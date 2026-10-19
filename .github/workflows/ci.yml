@@ -1,12 +1,12 @@
-name: build-test-publish
-run-name: ${{ github.actor }} is building, testing and publishing 🚀
+name: ci
+run-name: ${{ github.actor }} is building and testing 🏗️
 
 on:
   push:
     branches: [main]
   pull_request:
-  release:
-    types: [published]
+  # NOTE: called by release.yml before publishing.
+  workflow_call:
 
 jobs:
   build-and-test:
@@ -49,25 +49,3 @@ jobs:
       - name: cargo zigbuild (aarch64-apple-darwin, without http-client)
         run: cargo zigbuild --no-default-features --target aarch64-apple-darwin
 
-  publish-cratesio:
-    name: 📦 Publish to crates.io
-    if: github.event_name == 'release' && github.event.action == 'published'
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Clone repository
-        uses: actions/checkout@v7
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: Cache cargo registry and build artifacts
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      - name: publish to crates.io
-        run: cargo publish --no-verify --token ${{ secrets.CRATEIO_TOKEN }}
