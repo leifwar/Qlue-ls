@@ -7,6 +7,7 @@ pub mod invalid_projection_variable;
 pub mod same_subject;
 pub mod syntax_error;
 pub mod unbound_bind_variable;
+pub mod unbound_filter_variable;
 pub mod unbound_group_by_expression_variable;
 pub mod unbound_group_by_variable;
 pub mod unbound_having_variable;
@@ -93,6 +94,7 @@ pub(super) async fn handle_diagnostic_request(
     add_diagnostic!(deprecated_nearest_neighbors::diagnostics);
     add_diagnostic!(disjoint_minus::diagnostics);
     add_diagnostic!(unbound_bind_variable::diagnostics);
+    add_diagnostic!(unbound_filter_variable::diagnostics);
     add_scope_diagnostic!(unbound_group_by_variable::diagnostics);
     add_scope_diagnostic!(unbound_group_by_expression_variable::diagnostics);
     add_scope_diagnostic!(unbound_having_variable::diagnostics);

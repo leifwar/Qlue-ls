@@ -172,6 +172,48 @@ SELECT ?city ?density WHERE {
 }
 ```
 
+### Unbound FILTER variable { #unbound-filter-var }
+
+`unbound-filter-var`
+
+A variable in a `FILTER` is not bound in the group the `FILTER` is in.
+The comparison fails for every solution, so the `FILTER` removes all results.
+
+```sparql
+SELECT ?city ?population WHERE {
+  ?city <population> ?population
+  FILTER(?pop > 1000000)
+#        ^^^^
+}
+```
+
+**Fix:** use a variable that the group binds.
+
+```sparql
+SELECT ?city ?population WHERE {
+  ?city <population> ?population
+  FILTER(?population > 1000000)
+}
+```
+
+!!! note
+
+    A `FILTER` applies to its whole group, so it may come before the patterns that bind its variables.
+    It does not see the variables of the groups around it. The exceptions are a `FILTER` directly
+    inside an `OPTIONAL`, which also sees the variables bound before the `OPTIONAL`, and a `FILTER`
+    inside `EXISTS`/`NOT EXISTS`, which is not checked.
+
+    ```sparql
+    SELECT ?city WHERE {
+      ?city <population> ?population
+      {
+        ?city <area> ?area
+        FILTER(?population / ?area > 1000)
+    #          ^^^^^^^^^^^
+      }
+    }
+    ```
+
 ### Unbound SELECT expression variable { #unbound-select-expr-var }
 
 `unbound-select-expr-var`

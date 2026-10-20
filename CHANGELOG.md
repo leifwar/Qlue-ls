@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- new warning for variables in a `FILTER` that are not bound in the group the
+  `FILTER` is in. Such a filter removes every result, for example
+  `FILTER(?pirce > 100)` when the group only binds `?price`. A `FILTER` directly
+  inside an `OPTIONAL` may also use the variables bound before the `OPTIONAL`.
+
 ## [3.13.1] - 2026-10-19
 
 ### Added
