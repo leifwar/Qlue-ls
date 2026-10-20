@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   also covers queries without `GROUP BY` that are grouped implicitly by an
   aggregate, for example `?subject` in
   `SELECT ?subject (COUNT(*) AS ?count)`. The message names the aggregate.
+- new error for rows of a `VALUES` block that have more or fewer values than
+  the block has variables, for example `(1)` in `VALUES (?x ?y) { (1) }`.
+  QLever rejects such queries.
 
 ### Fixed
 

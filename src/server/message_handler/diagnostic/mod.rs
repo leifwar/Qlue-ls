@@ -5,6 +5,7 @@ pub mod duplicate_prefix_declaration;
 pub mod groupby_star_selection;
 pub mod invalid_bind_variable;
 pub mod invalid_projection_variable;
+pub mod invalid_values_row;
 pub mod same_subject;
 pub mod syntax_error;
 pub mod unbound_bind_variable;
@@ -90,6 +91,7 @@ pub(super) async fn handle_diagnostic_request(
     add_diagnostic!(ungrouped_select_variable::diagnostics);
     add_diagnostic!(invalid_projection_variable::diagnostics);
     add_diagnostic!(invalid_bind_variable::diagnostics);
+    add_diagnostic!(invalid_values_row::diagnostics);
     add_diagnostic!(same_subject::diagnostics);
     add_diagnostic!(syntax_error::diagnostics);
     add_diagnostic!(duplicate_prefix_declaration::diagnostics);

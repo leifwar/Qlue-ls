@@ -150,6 +150,33 @@ SELECT ?city ?population_k WHERE {
 }
 ```
 
+### Invalid VALUES row { #invalid-values-row }
+
+`invalid-values-row`
+
+A row of a `VALUES` block has more or fewer values than the block has variables.
+
+```sparql
+SELECT * WHERE {
+  VALUES (?city ?population) {
+    (<berlin> 3850000)
+    (<paris>)
+#   ^^^^^^^^^
+  }
+}
+```
+
+**Fix:** give every row one value per variable, use `UNDEF` for a missing value.
+
+```sparql
+SELECT * WHERE {
+  VALUES (?city ?population) {
+    (<berlin> 3850000)
+    (<paris> UNDEF)
+  }
+}
+```
+
 ## ⚠️ Warnings
 
 ### Unused prefix { #unused-prefix-declaration }
