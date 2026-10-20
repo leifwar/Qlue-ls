@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for example `SELECT ?lable` when the query body only binds `?label`. The
   column of such a variable is always empty.
 
+### Fixed
+
+- variables that only occur in a `FILTER` or `MINUS` inside a nested group, for
+  example `{ ?s ?p ?o FILTER(?x > 1) }`, no longer count as bound by that group.
+  Before, warnings about unbound variables and disjoint `MINUS` were missed
+  for such variables.
+
 ## [3.13.1] - 2026-10-19
 
 ### Added

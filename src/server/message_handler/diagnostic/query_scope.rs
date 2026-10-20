@@ -14,12 +14,10 @@
 //! NOTE: The scopes are computed once per diagnostic request and shared by all
 //! providers, the derived variable sets are computed lazily and cached.
 
-use super::bound_variables;
+use super::group_bound_variables;
 use ll_sparql_parser::{
     SyntaxNode,
-    ast::{
-        AstNode, Expression, GroupGraphPattern, SelectClause, SelectQuery, Unit, Var, WhereClause,
-    },
+    ast::{AstNode, Expression, SelectClause, SelectQuery, Unit, Var, WhereClause},
     syntax_kind::SyntaxKind,
 };
 use std::{cell::OnceCell, collections::HashSet};
@@ -111,12 +109,7 @@ impl QueryScope {
         };
         where_clause
             .group_graph_pattern()
-            .map(|ggp| match group_graph_pattern_sub(&ggp) {
-                // NOTE: Collected per element, since MINUS and FILTER do not bind variables.
-                Some(group) => group.children().flat_map(bound_variables).collect(),
-                // INFO: The body is a sub select (or empty).
-                None => ggp.visible_variables(),
-            })
+            .map(|ggp| group_bound_variables(&ggp))
             .unwrap_or_default()
             .into_iter()
             .map(|var| var.var_name())
@@ -284,12 +277,6 @@ pub(super) fn used_variables(node: &SyntaxNode) -> Vec<Var> {
                 })
         })
         .collect()
-}
-
-fn group_graph_pattern_sub(ggp: &GroupGraphPattern) -> Option<SyntaxNode> {
-    ggp.syntax()
-        .children()
-        .find(|child| child.kind() == SyntaxKind::GroupGraphPatternSub)
 }
 
 fn group_key(condition: &SyntaxNode) -> Option<GroupKey> {

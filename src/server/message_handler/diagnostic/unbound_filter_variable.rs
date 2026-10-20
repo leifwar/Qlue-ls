@@ -226,6 +226,16 @@ mod test {
     }
 
     #[test]
+    fn triggered_despite_filter_in_nested_group() {
+        // NOTE: A FILTER in a nested group does not bind its variables for the outer group.
+        let text = "SELECT * WHERE { ?s ?p ?o { ?s ?q ?v FILTER (?x > ?v) } FILTER (?x > 1) }";
+        let result = run(diagnostics, text);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].range, range_of(text, "?x", 0));
+        assert_eq!(result[1].range, range_of(text, "?x", 1));
+    }
+
+    #[test]
     fn not_triggered_by_preceding_triple() {
         let result = run(diagnostics, "SELECT * WHERE { ?s ?p ?o FILTER (?o > 1) }");
         assert!(result.is_empty());

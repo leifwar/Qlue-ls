@@ -43,7 +43,7 @@ use auto_fix_prefixes::{auto_fix_prefixes, client_support_workspace_edits};
 use futures::lock::Mutex;
 use ll_sparql_parser::{
     SyntaxNode,
-    ast::{AstNode, GraphPatternNotTriples, TriplesBlock, Unit, Var},
+    ast::{AstNode, GraphPatternNotTriples, GroupGraphPattern, TriplesBlock, Unit, Var},
     syntax_kind::SyntaxKind,
 };
 use query_scope::QueryScope;
@@ -158,19 +158,65 @@ fn warning(
 }
 
 /// The variables bound by an element of a group graph pattern.
+///
+/// NOTE: Nested groups are descended into element by element, since MINUS and
+/// FILTER never bind variables, not even inside a nested group.
 fn bound_variables(element: SyntaxNode) -> Vec<Var> {
     match element.kind() {
-        SyntaxKind::TriplesBlock => TriplesBlock::cast(element).map(|tb| tb.visible_variables()),
+        SyntaxKind::TriplesBlock => TriplesBlock::cast(element)
+            .map(|tb| tb.visible_variables())
+            .unwrap_or_default(),
         SyntaxKind::GraphPatternNotTriples => match GraphPatternNotTriples::cast(element) {
-            // NOTE: MINUS and FILTER never bind variables.
             Some(
                 GraphPatternNotTriples::MinusGraphPattern(_) | GraphPatternNotTriples::Filter(_),
-            ) => None,
-            pattern => pattern.map(|pattern| pattern.visible_variables()),
+            )
+            | None => Vec::new(),
+            Some(GraphPatternNotTriples::Bind(bind)) => bind.visible_variables(),
+            Some(GraphPatternNotTriples::InlineData(values)) => values.visible_variables(),
+            Some(GraphPatternNotTriples::GraphGraphPattern(graph)) => graph
+                .syntax()
+                .children()
+                .find(|child| child.kind() == SyntaxKind::VarOrIri)
+                .and_then(|var_or_iri| var_or_iri.first_child())
+                .and_then(Var::cast)
+                .into_iter()
+                .chain(nested_bound_variables(graph.syntax()))
+                .collect(),
+            // INFO: Groups, UNION, OPTIONAL and SERVICE bind the variables of their groups.
+            Some(pattern) => nested_bound_variables(pattern.syntax()),
         },
-        _ => None,
+        _ => Vec::new(),
     }
-    .unwrap_or_default()
+}
+
+/// The variables bound by the group graph patterns directly below `pattern`.
+fn nested_bound_variables(pattern: &SyntaxNode) -> Vec<Var> {
+    pattern
+        .descendants()
+        .filter_map(GroupGraphPattern::cast)
+        // INFO: Only the outermost groups, the inner ones are handled by recursion.
+        .filter(|ggp| {
+            ggp.syntax()
+                .ancestors()
+                .skip(1)
+                .take_while(|ancestor| ancestor != pattern)
+                .all(|ancestor| ancestor.kind() != SyntaxKind::GroupGraphPattern)
+        })
+        .flat_map(|ggp| group_bound_variables(&ggp))
+        .collect()
+}
+
+/// The variables bound by a group graph pattern.
+fn group_bound_variables(ggp: &GroupGraphPattern) -> Vec<Var> {
+    match ggp
+        .syntax()
+        .children()
+        .find(|child| child.kind() == SyntaxKind::GroupGraphPatternSub)
+    {
+        Some(group) => group.children().flat_map(bound_variables).collect(),
+        // INFO: The group is a sub select (or empty).
+        None => ggp.visible_variables(),
+    }
 }
 
 #[cfg(test)]
