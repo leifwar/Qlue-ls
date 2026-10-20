@@ -68,6 +68,20 @@ SELECT ?country (COUNT(?city) AS ?cities) WHERE {
 GROUP BY ?country
 ```
 
+!!! note
+
+    An aggregate in the `SELECT` clause groups the query implicitly into a single group, even without `GROUP BY`:
+
+    ```sparql
+    SELECT ?country (COUNT(?city) AS ?cities) WHERE {
+    #      ^^^^^^^^
+      ?city <located-in> ?country
+    }
+    ```
+
+    Add `GROUP BY ?country` to count per country, remove `?country` to count all cities,
+    or remove the aggregate to get one result per city.
+
 ### GROUP BY star selection { #groupby-star-selection }
 
 `groupby-star-selection`

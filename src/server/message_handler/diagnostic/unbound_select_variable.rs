@@ -36,9 +36,9 @@ pub(super) fn diagnostics(
                 .chain(scope.select_aliases())
                 .chain(&grouped_variables)
                 .collect();
-            // NOTE: In a top level query with GROUP BY, ungrouped variables are reported as
+            // NOTE: In a grouped top level query (explicitly or implicitly), ungrouped variables are reported as
             // errors by `ungrouped_select_variable`, so every selected variable is skipped.
-            let checked = !scope.is_explicitly_grouped() || scope.is_sub_select();
+            let checked = !scope.is_grouped() || scope.is_sub_select();
             scope
                 .select_clause()
                 .filter(|_| checked)
@@ -131,8 +131,18 @@ mod test {
     }
 
     #[test]
-    fn triggered_in_implicitly_grouped_query() {
-        let text = "SELECT ?x (COUNT(?s) AS ?c) WHERE { ?s ?p ?o }";
+    fn not_triggered_in_implicitly_grouped_query() {
+        // INFO: Ungrouped variables are reported by `ungrouped_select_variable`.
+        let result = run_scoped(
+            diagnostics,
+            "SELECT ?x (COUNT(?s) AS ?c) WHERE { ?s ?p ?o }",
+        );
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn triggered_in_implicitly_grouped_sub_select() {
+        let text = "SELECT * WHERE { { SELECT ?x (COUNT(?s) AS ?c) WHERE { ?s ?p ?o } } }";
         let result = run_scoped(diagnostics, text);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].range, range_of(text, "?x", 0));

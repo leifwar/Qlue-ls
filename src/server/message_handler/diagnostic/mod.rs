@@ -380,4 +380,27 @@ mod test {
             Some((*ungrouped_select_variable::CODE).clone())
         );
     }
+
+    #[test]
+    fn implicitly_ungrouped_select_variable_is_reported_once() {
+        // NOTE: The variables are unbound and ungrouped, only the errors are reported.
+        let text = "SELECT ?x (STR(?y) AS ?z) (COUNT(*) AS ?c) WHERE { ?s ?p ?o }";
+        let diagnostics: Vec<_> = run(ungrouped_select_variable::diagnostics, text)
+            .into_iter()
+            .chain(run_scoped(unbound_select_variable::diagnostics, text))
+            .chain(run_scoped(
+                unbound_select_expression_variable::diagnostics,
+                text,
+            ))
+            .collect();
+        assert_eq!(diagnostics.len(), 2);
+        assert_eq!(diagnostics[0].range, range_of(text, "?x", 0));
+        assert_eq!(diagnostics[1].range, range_of(text, "?y", 0));
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.code
+                    == Some((*ungrouped_select_variable::CODE).clone()))
+        );
+    }
 }

@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - new error for a `BIND` whose variable is already bound before the `BIND` in
   the same group, for example `BIND(?price * 2 AS ?price)` after
   `?item ex:price ?price`. QLever rejects such queries.
+- the error for selected variables that are neither grouped nor aggregated now
+  also covers queries without `GROUP BY` that are grouped implicitly by an
+  aggregate, for example `?subject` in
+  `SELECT ?subject (COUNT(*) AS ?count)`. The message names the aggregate.
 
 ### Fixed
 

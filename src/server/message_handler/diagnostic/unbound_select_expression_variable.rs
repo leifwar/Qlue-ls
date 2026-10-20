@@ -38,11 +38,11 @@ pub(super) fn diagnostics(
                 .chain(scope.values_variables())
                 .cloned()
                 .collect();
-            // NOTE: In a top level query with GROUP BY, unaggregated variables that are not
+            // NOTE: In a grouped top level query, unaggregated variables that are not
             // grouped are reported as errors by `ungrouped_select_variable`, so they are
             // skipped here to avoid two diagnostics for the same variable.
-            let grouped_variables = (!scope.is_sub_select() && scope.is_explicitly_grouped())
-                .then(|| scope.grouped_variables());
+            let grouped_variables =
+                (!scope.is_sub_select() && scope.is_grouped()).then(|| scope.grouped_variables());
             scope
                 .select_clause()
                 .map(|select_clause| select_clause.assignments())
