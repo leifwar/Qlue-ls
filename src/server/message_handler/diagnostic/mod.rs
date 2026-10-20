@@ -14,6 +14,7 @@ pub mod unbound_having_variable;
 pub mod unbound_order_by_expression_variable;
 pub mod unbound_order_by_variable;
 pub mod unbound_select_expression_variable;
+pub mod unbound_select_variable;
 pub mod uncompacted_uri;
 pub mod undeclared_prefix;
 pub mod ungrouped_order_by_variable;
@@ -102,6 +103,7 @@ pub(super) async fn handle_diagnostic_request(
     add_scope_diagnostic!(unbound_order_by_expression_variable::diagnostics);
     add_scope_diagnostic!(ungrouped_order_by_variable::diagnostics);
     add_scope_diagnostic!(unbound_select_expression_variable::diagnostics);
+    add_scope_diagnostic!(unbound_select_variable::diagnostics);
 
     if client_support_workspace_edits(&server) {
         auto_fix_prefixes(&mut server, &request, &diagnostic_accu);
@@ -242,7 +244,8 @@ mod test {
     use super::{
         add_code_descriptions,
         test_utils::{range_of, run, run_scoped, run_with_server},
-        unbound_select_expression_variable, undeclared_prefix, ungrouped_select_variable,
+        unbound_select_expression_variable, unbound_select_variable, undeclared_prefix,
+        ungrouped_select_variable,
     };
     use crate::server::{Server, lsp::diagnostic::CodeDescription};
     use pretty_assertions::assert_eq;
@@ -305,6 +308,22 @@ mod test {
                 unbound_select_expression_variable::diagnostics,
                 text,
             ))
+            .collect();
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].range, range_of(text, "?x", 0));
+        assert_eq!(
+            diagnostics[0].code,
+            Some((*ungrouped_select_variable::CODE).clone())
+        );
+    }
+
+    #[test]
+    fn ungrouped_select_variable_is_reported_once() {
+        // NOTE: The variable is unbound and ungrouped, only the error is reported.
+        let text = "SELECT ?x WHERE { ?s ?p ?o } GROUP BY ?s";
+        let diagnostics: Vec<_> = run(ungrouped_select_variable::diagnostics, text)
+            .into_iter()
+            .chain(run_scoped(unbound_select_variable::diagnostics, text))
             .collect();
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].range, range_of(text, "?x", 0));

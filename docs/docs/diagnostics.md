@@ -214,6 +214,28 @@ SELECT ?city ?population WHERE {
     }
     ```
 
+### Unbound SELECT variable { #unbound-select-var }
+
+`unbound-select-var`
+
+A selected variable is not bound in the query body.
+Its column stays empty, even for results where the query body matches.
+
+```sparql
+SELECT ?city ?pop WHERE {
+#            ^^^^
+  ?city <population> ?population
+}
+```
+
+**Fix:** select a variable of the query body.
+
+```sparql
+SELECT ?city ?population WHERE {
+  ?city <population> ?population
+}
+```
+
 ### Unbound SELECT expression variable { #unbound-select-expr-var }
 
 `unbound-select-expr-var`
