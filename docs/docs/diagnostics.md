@@ -112,6 +112,30 @@ SELECT (?population / 1000 AS ?population_k) WHERE {
 }
 ```
 
+### Invalid BIND variable { #invalid-bind-var }
+
+`invalid-bind-var`
+
+The variable of a `BIND` is already bound before the `BIND`, in the same group.
+`BIND` can only introduce a new variable, it cannot overwrite one.
+
+```sparql
+SELECT ?city ?population WHERE {
+  ?city <population> ?population
+  BIND(?population / 1000 AS ?population)
+#                            ^^^^^^^^^^^
+}
+```
+
+**Fix:** use a fresh variable.
+
+```sparql
+SELECT ?city ?population_k WHERE {
+  ?city <population> ?population
+  BIND(?population / 1000 AS ?population_k)
+}
+```
+
 ## ⚠️ Warnings
 
 ### Unused prefix { #unused-prefix-declaration }

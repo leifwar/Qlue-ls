@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - new warning for selected variables that are not bound in the query body,
   for example `SELECT ?lable` when the query body only binds `?label`. The
   column of such a variable is always empty.
+- new error for a `BIND` whose variable is already bound before the `BIND` in
+  the same group, for example `BIND(?price * 2 AS ?price)` after
+  `?item ex:price ?price`. QLever rejects such queries.
 
 ### Fixed
 
