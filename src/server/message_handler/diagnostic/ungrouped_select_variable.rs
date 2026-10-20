@@ -4,6 +4,9 @@
 //! in the `GROUP BY` clause or be used inside an aggregate. This reports both
 //! plainly selected variables and unaggregated variables in `SELECT`
 //! expressions that violate that rule.
+//!
+//! Like QLever, the variables of the trailing `VALUES` clause count as grouped,
+//! since they are joined after the grouping.
 
 use crate::server::{
     Server,
@@ -27,13 +30,20 @@ pub(super) fn diagnostics(
     _server: &Server,
 ) -> Option<Vec<Diagnostic>> {
     let query_unit = ast.as_query()?;
-    // NOTE: The variables specified in the GROUP BY
+    // NOTE: The variables specified in the GROUP BY and the trailing VALUES clause
     let group_vars_str: HashSet<String> = query_unit
         .select_query()?
         .soulution_modifier()?
         .group_clause()?
         .visible_variables()
-        .iter()
+        .into_iter()
+        .chain(
+            query_unit
+                .select_query()?
+                .values_clause()
+                .map(|values_clause| values_clause.visible_variables())
+                .unwrap_or_default(),
+        )
         .map(|var| var.text())
         .collect();
 
@@ -181,6 +191,16 @@ mod test {
     #[test]
     fn not_triggered_without_group_by() {
         let result = run(diagnostics, "SELECT ?s ?o WHERE { ?s ?p ?o }");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn not_triggered_by_trailing_values_variable() {
+        // NOTE: The trailing VALUES clause is joined after the grouping.
+        let result = run(
+            diagnostics,
+            "SELECT ?s ?v WHERE { ?s ?p ?o } GROUP BY ?s VALUES ?v { 1 }",
+        );
         assert!(result.is_empty());
     }
 }

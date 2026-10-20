@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   example `{ ?s ?p ?o FILTER(?x > 1) }`, no longer count as bound by that group.
   Before, warnings about unbound variables and disjoint `MINUS` were missed
   for such variables.
+- variables of the trailing `VALUES` clause are no longer reported as ungrouped
+  in a grouped query, since they are joined after the grouping.
 
 ## [3.13.1] - 2026-10-19
 
